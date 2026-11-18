@@ -91,6 +91,22 @@ FATAL_CLOSE = {4004: "the bot token is wrong or was reset",
                4012: "invalid API version", 4013: "invalid intents",
                4014: "disallowed intents"}
 RE_ID = re.compile(r"^\d{15,22}$")
+# Mainsail's sidebar (config/.theme/navi.json): the entry this file adds,
+# found again by its href. mdi-bell-outline.
+NAVI_HREF = "/server/pushraker_addons/page?to=settings"
+NAVI_ICON = ("M10 21H14C14 22.1 13.1 23 12 23S10 22.1 10 21M21 19V20H3V19L5 "
+             "17V11C5 7.9 7 5.2 10 4.3V4C10 2.9 10.9 2 12 2S14 2.9 14 4V4.3C17 "
+             "5.2 19 7.9 19 11V17L21 19M17 11C17 8.2 14.8 6 12 6S7 8.2 7 11V18H"
+             "17V11Z")
+# The page the sidebar link opens: it sends the browser on to the settings
+# page at the address the browser used for Mainsail (the port differs per
+# printer, the host doesn't)
+REDIRECT = """<!doctype html><meta charset="utf-8"><title>Push notifications</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{background:#1a1a1a;color:#888;font:14px system-ui,sans-serif;padding:24px}</style>
+<p>Opening the notification settings…</p>
+<script>location.replace(%s.replace("{host}", location.hostname));</script>
+"""
 # The plugin this file ships in, by update manager entry: the settings
 # page shows its version beside pushraker's
 ADDON_REPOS = {
@@ -178,6 +194,74 @@ def addons_version(version: str) -> str:
     if v[:1] in "vV" and v[1:2].isdigit():
         v = v[1:]
     return v[:-2] if v.endswith("-0") else v
+
+
+def sidebar_entry(config_dir: str, want: bool) -> str:
+    """Adds (or, want False, removes) the "Push notifications" entry in
+    Mainsail's config/.theme/navi.json, keeping the others. .theme may be a
+    theme plugin's folder (FF_Themes, FLSUN_theme link it into their repo):
+    navi.json is then kept out of that repo's git status
+    (.git/info/exclude), unless the theme tracks a navi.json of its own,
+    which is left alone. Returns what it did, "" if nothing."""
+    import subprocess
+    theme = os.path.join(config_dir, ".theme")
+    if not os.path.isdir(theme):
+        if not want:
+            return ""
+        os.makedirs(theme, exist_ok=True)
+    real = os.path.realpath(theme)
+    navi = os.path.join(real, "navi.json")
+    # The git repo .theme is in, if any
+    repo, d = "", real
+    while d and d != os.path.dirname(d):
+        if os.path.isdir(os.path.join(d, ".git")):
+            repo = d
+            break
+        d = os.path.dirname(d)
+    rel = os.path.relpath(navi, repo).replace(os.sep, "/") if repo else ""
+    if repo:
+        r = subprocess.run(["git", "-C", repo, "ls-files", "--error-unmatch",
+                            rel], capture_output=True, text=True)
+        if r.returncode == 0:
+            return (f"{rel} belongs to the theme in {repo}; sidebar link "
+                    "not added")
+    entries: List[Any] = []
+    if os.path.exists(navi):
+        try:
+            with open(navi, encoding="utf-8") as f:
+                entries = json.load(f)
+            if not isinstance(entries, list):
+                return "navi.json isn't a list; sidebar link not added"
+        except (OSError, ValueError) as e:
+            return f"navi.json unreadable ({e}); sidebar link not added"
+    others = [e for e in entries if not (isinstance(e, dict) and str(
+        e.get("href", "")).startswith("/server/pushraker_addons/page"))]
+    new = others + ([{"title": "Push notifications", "href": NAVI_HREF,
+                      "target": "_blank", "position": 85,
+                      "icon": NAVI_ICON}] if want else [])
+    if new == entries:
+        return ""
+    if not new and not os.path.exists(navi):
+        return ""
+    if new:
+        tmp = navi + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(new, f, indent=2)
+            f.write("\n")
+        os.replace(tmp, navi)
+    else:
+        os.remove(navi)
+    if repo and want:
+        exclude = os.path.join(repo, ".git", "info", "exclude")
+        os.makedirs(os.path.dirname(exclude), exist_ok=True)
+        lines = open(exclude).read().splitlines() \
+            if os.path.exists(exclude) else []
+        if "/" + rel not in lines:
+            with open(exclude, "a") as f:
+                f.write(("" if not lines or lines[-1] == "" else "\n") +
+                        "/" + rel + "\n")
+    return (f"Mainsail sidebar link {'added to' if want else 'removed from'}"
+            f" {navi}")
 
 
 def git_version() -> str:
@@ -370,6 +454,13 @@ class PushrakerUpdates:
         # The card's "Open in browser" link (pushraker's web_ui_url wins
         # when set on its page)
         self.web_ui_url = config.get("web_ui_url", "http://{host}/")
+        # The settings page, for Mainsail's sidebar link: like page_url
+        self.settings_url = config.get(
+            "settings_url", self.page_url.replace("/pushraker-updates/",
+                                                  "/notifications/"))
+        # "Push notifications" in Mainsail's sidebar (.theme/navi.json)
+        self.sidebar_link = config.getboolean("sidebar_link", True)
+        self.config_dir = ""
         # The plugin around pushraker (this file, the Discord cards): its
         # update manager entry gives the version the settings page shows
         self.addons_entry = config.get("addons_entry", "")
@@ -397,6 +488,12 @@ class PushrakerUpdates:
             data_path = ""
         data_path = data_path or os.path.expanduser("~/printer_data")
         self.state_path = os.path.join(data_path, ".pushraker_updates.json")
+        try:
+            cfg_file = self.server.get_app_args().get("config_file") or ""
+        except Exception:
+            cfg_file = ""
+        self.config_dir = os.path.dirname(cfg_file) or \
+            os.path.join(data_path, "config")
         self.state: Dict[str, Any] = self._load()
         self.state.setdefault("printer", secrets.token_hex(3))
         saved = self.state.get("settings")
@@ -427,6 +524,18 @@ class PushrakerUpdates:
         # clear whether pushraker or the add-ons changed
         self.server.register_endpoint(
             "/server/pushraker_addons/info", ["GET"], self._ep_addons)
+        # Mainsail's sidebar link: a page (not JSON) that sends the browser
+        # on to the settings page
+        try:
+            self.server.register_endpoint(
+                "/server/pushraker_addons/page", ["GET"], self._ep_page,
+                transports=["http"], wrap_result=False,
+                content_type="text/html; charset=UTF-8",
+                auth_required=False)
+        except TypeError:
+            logging.info(f"{LOG} this Moonraker can't serve the sidebar "
+                         "link's page")
+            self.sidebar_link = False
         self.server.register_remote_method(
             "pushraker_check_updates", self._remote_check)
 
@@ -455,6 +564,14 @@ class PushrakerUpdates:
 
     async def component_init(self) -> None:
         self._save()
+        if self.sidebar_link:
+            try:
+                changed = await self.eventloop.run_in_thread(
+                    sidebar_entry, self.config_dir, True)
+                if changed:
+                    logging.info(f"{LOG} {changed}")
+            except Exception as e:
+                logging.info(f"{LOG} Mainsail sidebar link not added: {e}")
         if not self.enabled:
             logging.info(f"{LOG} update notices are off")
         self._spawn(self._schedule())
@@ -742,6 +859,12 @@ class PushrakerUpdates:
             return await self.check(force=force)
         except Busy as e:
             raise self.server.error(str(e), 503)
+
+    async def _ep_page(self, web_request: Any) -> str:
+        to = web_request.get_str("to", "settings") \
+            if hasattr(web_request, "get_str") else "settings"
+        url = self.page_url if to == "updates" else self.settings_url
+        return REDIRECT % json.dumps(url)
 
     async def _ep_addons(self, web_request: Any) -> Dict[str, Any]:
         version, name, url = "", self.addons_entry, self.addons_url
