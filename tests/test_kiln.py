@@ -355,6 +355,9 @@ with open(os.path.join(PY, "pushraker", "web", "index.html"),
           encoding="utf-8") as f:
     page = f.read()
 check("el('nt-fc-loaded') ?" in page, "settings page filament-change fix")
+check("/server/pushraker_addons/info" in page, "settings page: add-on version line")
+check("'Push notifications' + (n ? ' - ' + n : '')" in page,
+      "settings page: printer name in the page header")
 
 with open(os.path.join(HERE, "root", "install.sh"), encoding="utf-8") as f:
     inst = f.read()

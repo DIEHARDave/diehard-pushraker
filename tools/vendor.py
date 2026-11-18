@@ -48,6 +48,12 @@ PATCHES = [
     ("pushraker/web/index.html",
      "el('pr-version').textContent = data.meta.version ? `pushraker ${data.meta.version}` : '';",
      'el(\'pr-version\').textContent = data.meta.version ? `pushraker ${data.meta.version}` : \'\'; fetch(\'/server/pushraker_addons/info\').then(r => r.ok ? r.json() : null).then(j => { const a = j && j.result; const o = el(\'pr-addons\'); if (o) o.remove(); if (!a || !a.version) return; const s = document.createElement(\'span\'); s.id = \'pr-addons\'; const l = document.createElement(\'a\'); l.href = a.url; l.target = \'_blank\'; l.style.margin = \'0\'; l.textContent = "DIEHARDave\'s plugins"; s.append(\' - with \', l, \' \' + a.version); el(\'pr-version\').after(s); }).catch(() => {});'),
+    # The printer's name after "Push notifications" at the top of the
+    # page (and in the browser tab), so each printer's page is easy to
+    # tell apart.
+    ("pushraker/web/index.html",
+     "el('nt-name').value = data.name;",
+     "el('nt-name').value = data.name; { const n = data.name || (data.meta && data.meta.default_name) || ''; const h = document.querySelector('h1 > span'); if (h) h.textContent = 'Push notifications' + (n ? ' - ' + n : ''); document.title = n ? `${n} · Push notifications` : 'Push notifications'; }"),
 ]
 
 

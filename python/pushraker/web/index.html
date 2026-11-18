@@ -2199,7 +2199,7 @@
         el('nt-topic').value = data.topic;
         el('nt-auth').value = data.auth;
         el('nt-username').value = data.username;
-        el('nt-name').value = data.name;
+        el('nt-name').value = data.name; { const n = data.name || (data.meta && data.meta.default_name) || ''; const h = document.querySelector('h1 > span'); if (h) h.textContent = 'Push notifications' + (n ? ' - ' + n : ''); document.title = n ? `${n} · Push notifications` : 'Push notifications'; }
         el('nt-name').placeholder = data.meta.default_name || 'Printer';
         el('nt-name-info').dataset.info = `Shown by default in every title, e.g. "✅ ${data.name || data.meta.default_name || 'Printer'} complete".`;
         el('nt-printer-url').value = data.printer_url;
