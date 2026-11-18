@@ -70,6 +70,10 @@ the card. At the bottom, **Open &lt;printer&gt; in browser** links to the
 printer's web UI. There is no remote "update all" on purpose: one entry
 per click.
 
+<p align="center">
+  <img src="docs/images/discord-update-notice.png" alt="Discord update notice: four updates, each with an Update button, and an Open in browser link" width="360">
+</p>
+
 - **With a Discord bot** (pushraker's *Discord DM* setting, or a
   `bot_token` of its own): the buttons are real. A click asks you to
   confirm, then the printer runs the update and edits the card with the
@@ -92,6 +96,10 @@ Set them up on the settings page: the **System** group above Custom has a
 **Edit** opens the schedule: check times, days, whether to send only when
 something new is out, the time zone, entries to leave out, and **Check
 now**. Save & Apply saves it, with no restart.
+
+<p align="center">
+  <img src="docs/images/settings-system.png" alt="The System section on the settings page: Software updates with its schedule open" width="640">
+</p>
 
 The page's settings are kept in `printer_data/.pushraker_updates.json`.
 `[pushraker_updates]` in the plugin's Moonraker config (see
