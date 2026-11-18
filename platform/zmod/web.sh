@@ -1,5 +1,7 @@
 #!/bin/sh
-# diehard-pushraker on Zmod: pushraker's settings page on port 82.
+# diehard-pushraker on Zmod: pushraker's settings page, on zmod_dualweb's
+# port 81 when it takes other plugins' pages (mod_data/dualweb.d), else on
+# a port 82 server of its own.
 #
 #   web.sh start    (re)start the port 82 server
 #   web.sh stop     stop it
@@ -34,6 +36,12 @@ WEB=$PLUGIN/python/pushraker/web
 # also matches the target of /proc/PID/exe, so a symlink is not enough).
 BIN=$DIR/zpushraker
 LOG=/opt/config/mod_data/log/diehard-pushraker.log
+# zmod_dualweb's port 81 server, when it includes other plugins' snippets:
+# the pages go there instead of a server of their own on port 82
+DUALWEB=/opt/config/mod_data/plugins/zmod_dualweb/dualweb.sh
+DUALWEB_CONF=/root/nginx/dualweb/nginx.conf
+DUALWEB_D=/opt/config/mod_data/dualweb.d
+SNIPPET=$DUALWEB_D/diehard-pushraker.conf
 
 running() {
     pid=$(cat "$PID_FILE" 2>/dev/null) && kill -0 "$pid" 2>/dev/null
@@ -52,7 +60,38 @@ stop() {
     rm -f "$PID_FILE"
 }
 
+on81() {
+    grep -qs "include $DUALWEB_D/\*.conf;" "$DUALWEB_CONF" && [ -f "$SNIPPET" ]
+}
+
+# Port 81: zmod_dualweb's server includes mod_data/dualweb.d/*.conf. The
+# snippet is written whether or not it does yet (an older zmod_dualweb):
+# port 82 runs until port 81 has it. 0 = the page is on port 81.
+port81() {
+    [ -f "$DUALWEB" ] || return 1
+    mkdir -p "$DUALWEB_D"
+    text="# diehard-pushraker (platform/zmod/web.sh): its pages on zmod_dualweb's
+# port 81 server. Rewritten at every Klipper start: do not edit.
+location /notifications/ { alias $WEB/; index index.html; add_header Cache-Control \"no-store\"; }
+location /pushraker-updates/ { alias $PLUGIN/web/; index index.html; add_header Cache-Control \"no-store\"; }"
+    changed=0
+    if [ "$(cat "$SNIPPET" 2>/dev/null)" != "$text" ]; then
+        printf '%s\n' "$text" > "$SNIPPET"
+        changed=1
+    fi
+    grep -qs "include $DUALWEB_D/\*.conf;" "$DUALWEB_CONF" || return 1
+    if [ "$changed" = 1 ]; then
+        DUALWEB_CHROOT=1 /bin/sh "$DUALWEB" restart >/dev/null 2>&1 || return 1
+    fi
+    return 0
+}
+
 start() {
+    if port81; then
+        stop
+        echo "pushraker web: settings page on port 81 (/notifications/, with zmod_dualweb)"
+        return 0
+    fi
     if [ ! -x "$ZNGINX/nginx" ] || [ ! -f "$ZNGINX/nginx.conf" ]; then
         echo "pushraker web: Zmod's nginx not found in $ZNGINX" >&2
         exit 1
@@ -112,7 +151,9 @@ case "$1" in
         echo "pushraker web: port $PORT stopped"
         ;;
     status)
-        if running; then
+        if on81; then
+            echo "pushraker web: settings page on port 81 (/notifications/, with zmod_dualweb)"
+        elif running; then
             echo "pushraker web: settings page on port $PORT (/notifications/)"
         else
             echo "pushraker web: port $PORT not running"

@@ -196,6 +196,27 @@ def addons_version(version: str) -> str:
     return v[:-2] if v.endswith("-0") else v
 
 
+# The Fluidd/Mainsail servers on port 81 that take other plugins' pages,
+# and the snippet the plugin puts there: (server config, snippet)
+PORT81 = (("/root/nginx/dualweb/nginx.conf",
+           "/opt/config/mod_data/dualweb.d/diehard-pushraker.conf"),
+          ("/data/ad5x/nginx/mainsail.conf",
+           "/data/ad5x/nginx/port81.d/diehard-pushraker.conf"))
+
+
+def pages_port(port81: Any = PORT81) -> str:
+    """:81 when a port 81 server includes the plugin's pages, else :82."""
+    for conf, snippet in port81:
+        try:
+            with open(conf) as f:
+                text = f.read()
+        except OSError:
+            continue
+        if os.path.exists(snippet) and                 f"include {os.path.dirname(snippet)}/*.conf;" in text:
+            return ":81"
+    return ":82"
+
+
 def sidebar_entry(config_dir: str, want: bool) -> str:
     """Adds (or, want False, removes) the "Push notifications" entry in
     Mainsail's config/.theme/navi.json, keeping the others. .theme may be a
@@ -449,8 +470,12 @@ class PushrakerUpdates:
         except ValueError as e:
             raise config.error(f"[{config.get_name()}] {e}")
         self.buttons = config.getboolean("buttons", True)
+        # {port}: where the pages are (web_port, else found: :81 inside the
+        # Fluidd/Mainsail server of zmod_dualweb or mainsail-kiln, :82 a
+        # server of their own)
         self.page_url = config.get(
-            "page_url", "http://{host}:82/pushraker-updates/")
+            "page_url", "http://{host}{port}/pushraker-updates/")
+        self.web_port = config.get("web_port", "").strip()
         # The card's "Open in browser" link (pushraker's web_ui_url wins
         # when set on its page)
         self.web_ui_url = config.get("web_ui_url", "http://{host}/")
@@ -718,8 +743,14 @@ class PushrakerUpdates:
         host = urllib.parse.urlparse(web).hostname if web else ""
         return host or local_address()
 
+    def _port(self) -> str:
+        if self.web_port:
+            return self.web_port if self.web_port.startswith(":")                 else ":" + self.web_port
+        return pages_port()
+
     def _page(self) -> str:
-        return self.page_url.replace("{host}", self._host())
+        return self.page_url.replace("{host}", self._host()).replace(
+            "{port}", self._port())
 
     def _web_ui(self) -> str:
         web = str(getattr(self._push(), "web_ui_url", "") or "")
@@ -864,7 +895,7 @@ class PushrakerUpdates:
         to = web_request.get_str("to", "settings") \
             if hasattr(web_request, "get_str") else "settings"
         url = self.page_url if to == "updates" else self.settings_url
-        return REDIRECT % json.dumps(url)
+        return REDIRECT % json.dumps(url.replace("{port}", self._port()))
 
     async def _ep_addons(self, web_request: Any) -> Dict[str, Any]:
         version, name, url = "", self.addons_entry, self.addons_url

@@ -367,7 +367,9 @@ check('<script src="/pushraker-updates/system.js"></script>' in page and
 
 with open(os.path.join(HERE, "root", "install.sh"), encoding="utf-8") as f:
     inst = f.read()
-conf = inst.split("<<EOF", 1)[1].split("\nEOF", 1)[0]
+# Every heredoc: the port 81 snippet and the port 82 server
+conf = "\n".join(part.split("\nEOF", 1)[0]
+                 for part in inst.split("<<EOF")[1:])
 conf_lines = [ln for ln in conf.splitlines()
               if not ln.strip().startswith("#")]
 check(not re.search(r"^\s*return\b", "\n".join(conf_lines), re.M),
@@ -378,6 +380,9 @@ check("location /pushraker-updates/" in conf and
       os.path.isfile(os.path.join(HERE, "web", "index.html")),
       "serves the update confirm page /pushraker-updates/")
 check("location /server/" in conf, "proxies /server/ to Moonraker")
+check('grep -qs "include $X81/\\*\\.conf;" $MS81' in inst and
+      "cat > $SNIPPET" in inst and "include $SNIPPET;" in conf,
+      "pages in port81.d (mainsail-kiln's port 81), port 82 only without it")
 
 print(f"\n{'FAILED: ' + str(len(failures)) if failures else 'all passed'}")
 sys.exit(1 if failures else 0)

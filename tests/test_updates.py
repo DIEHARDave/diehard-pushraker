@@ -21,6 +21,7 @@ import importlib.util
 import json
 import os
 import sys
+import subprocess
 import tempfile
 import types
 import datetime
@@ -663,6 +664,62 @@ run(settle())
 check(comp8._next is not None and (comp8._next.hour, comp8._next.minute)
       in ((6, 15), (18, 45)), f"on again: next check {comp8._next}")
 run(comp8.close())
+
+# ---- which port the pages are on; Mainsail's sidebar link -----------------
+tmp9 = tempfile.mkdtemp()
+srv81 = os.path.join(tmp9, "nginx.conf")
+snip = os.path.join(tmp9, "port81.d", "diehard-pushraker.conf")
+pairs = ((srv81, snip),)
+check(pu.pages_port(pairs) == ":82", "no port 81 server: :82")
+open(srv81, "w").write("server {\n  listen 81;\n  include %s/*.conf;\n}\n"
+                       % os.path.dirname(snip))
+check(pu.pages_port(pairs) == ":82", "port 81 includes the folder, no snippet yet: :82")
+os.makedirs(os.path.dirname(snip))
+open(snip, "w").write("location /notifications/ {}\n")
+check(pu.pages_port(pairs) == ":81", "port 81 server with the snippet: :81")
+open(srv81, "w").write("server {\n  listen 81;\n}\n")
+check(pu.pages_port(pairs) == ":82", "an older port 81 server without the include: :82")
+
+cfg = tempfile.mkdtemp()
+msg = pu.sidebar_entry(cfg, True)
+navi = json.load(open(os.path.join(cfg, ".theme", "navi.json")))
+check(len(navi) == 1 and navi[0]["href"] == pu.NAVI_HREF and
+      navi[0]["target"] == "_blank" and "added" in msg,
+      "no .theme yet: created, with the entry")
+mine = {"title": "Spoolman", "href": "http://x:7912"}
+json.dump([mine] + navi, open(os.path.join(cfg, ".theme", "navi.json"), "w"))
+check(pu.sidebar_entry(cfg, True) == "", "already there: nothing written")
+pu.sidebar_entry(cfg, False)
+check(json.load(open(os.path.join(cfg, ".theme", "navi.json"))) == [mine],
+      "removed again, other entries kept")
+# .theme linked into a theme repo (FF_Themes): kept out of its git status
+if subprocess.run(["git", "--version"], capture_output=True).returncode == 0:
+    repo = tempfile.mkdtemp()
+    subprocess.run(["git", "init", "-q", repo], check=True)
+    os.makedirs(os.path.join(repo, "themes", "zmod-ad5x"))
+    open(os.path.join(repo, "themes", "zmod-ad5x", "custom.css"), "w").write("")
+    subprocess.run(["git", "-C", repo, "add", "-A"], check=True)
+    cfg2 = tempfile.mkdtemp()
+    target = os.path.join(repo, "themes", "zmod-ad5x")
+    try:
+        os.symlink(target, os.path.join(cfg2, ".theme"),
+                   target_is_directory=True)
+        linked = True
+    except OSError:
+        linked = False      # Windows without symlink rights
+    if linked:
+        pu.sidebar_entry(cfg2, True)
+        st = subprocess.run(["git", "-C", repo, "status", "--porcelain"],
+                            capture_output=True, text=True).stdout
+        check(os.path.exists(os.path.join(target, "navi.json")) and
+              "navi.json" not in st,
+              "inside a theme repo: written there, not in its git status")
+        open(os.path.join(target, "navi.json"), "w").write("[]")
+        subprocess.run(["git", "-C", repo, "add", "-f", "themes/zmod-ad5x/navi.json"], check=True)
+        check("belongs to the theme" in pu.sidebar_entry(cfg2, True),
+              "a theme's own tracked navi.json is left alone")
+    else:
+        print("skip theme repo check (no symlinks here)")
 
 # status endpoint, remote method registered
 st = run(server.endpoints["/server/pushraker_updates/status"](None))

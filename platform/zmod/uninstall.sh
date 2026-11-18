@@ -38,6 +38,12 @@ fi
 
 # ---- chroot: Moonraker -----------------------------------------------------
 PUSHRAKER_WEB_CHROOT=1 /bin/sh "$CHROOT_PLUGIN_DIR/platform/zmod/web.sh" stop
+# The pages on zmod_dualweb's port 81
+if [ -f /opt/config/mod_data/dualweb.d/diehard-pushraker.conf ]; then
+    rm -f /opt/config/mod_data/dualweb.d/diehard-pushraker.conf
+    [ -f /opt/config/mod_data/plugins/zmod_dualweb/dualweb.sh ] &&
+        DUALWEB_CHROOT=1 /bin/sh /opt/config/mod_data/plugins/zmod_dualweb/dualweb.sh restart >/dev/null 2>&1
+fi
 
 FILE="$CONFIG_DIR/mod_data/plugins.moonraker.conf"
 [ -f "$FILE" ] && sed -i "\|plugins/$NAME/$NAME\.moonraker\.conf|d" "$FILE"
