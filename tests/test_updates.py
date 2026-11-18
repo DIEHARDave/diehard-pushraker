@@ -638,6 +638,10 @@ check(not comp7.enabled and comp7.times == [(6, 15), (18, 45)] and
       comp7.days == [5, 6] and comp7.repeat == "always" and
       comp7.ignore == {"mainsail"}, "POST applies at once")
 check(got["next_check"] is None, "off: no next check")
+got = run(ep(Req("POST", {"enabled": True})))
+check(got["next_check"] and got["next_check"][11:16] in ("06:15", "18:45"),
+      f"the answer already has the new next check: {got['next_check']}")
+run(ep(Req("POST", {"enabled": False})))
 saved = json.load(open(os.path.join(data7, ".pushraker_updates.json")))
 check(saved["settings"] == {"enabled": False, "check_time": "06:15, 18:45",
                             "check_days": "sat, sun", "notify": "always",

@@ -478,6 +478,12 @@ class PushrakerUpdates:
             self.state["settings"] = {k: v for k, v in new.items()
                                       if v != normalize(self.defaults)[k]}
             self._save()
+            # The answer shows the new next check (the scheduler, woken,
+            # works out the same one)
+            self._next = next_run(
+                datetime.datetime.now(datetime.timezone.utc).astimezone(
+                    self._tz()), self.times, self.days) \
+                if self.enabled else None
             self._wake.set()
             self._reconcile()
             logging.info(f"{LOG} settings saved from the page: {new}")
