@@ -589,7 +589,16 @@ class PushrakerUpdates:
 
     async def component_init(self) -> None:
         self._save()
-        # Mainsail's sidebar link, or (sidebar_link: False) none
+        # Mainsail's sidebar link, or (sidebar_link: False) none. Mainsail
+        # reads .theme from Moonraker's "config" root, which isn't always
+        # where moonraker.conf is (Kiln OS: /run/moonraker)
+        try:
+            root = self.server.lookup_component("file_manager") \
+                .get_directory("config")
+            if root:
+                self.config_dir = root
+        except Exception:
+            pass
         try:
             changed = await self.eventloop.run_in_thread(
                 sidebar_entry, self.config_dir, self.sidebar_link)
