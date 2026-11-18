@@ -2292,7 +2292,7 @@
         // saved, an empty field means "no buttons" and is left alone.
         const firstSetup = !data.enabled && !data.server && !data.pushover_user && !data.has_secret;
         if (firstSetup && !data.printer_url && /^https?:$/.test(location.protocol) && location.hostname) {
-            el('nt-printer-url').value = location.protocol + '//' + location.host;
+            el('nt-printer-url').value = location.protocol + '//' + location.hostname;
         }
         updatePrinterUrl();
         el('nt-server').oninput = updatePublicWarning;
@@ -2672,5 +2672,6 @@
 })();
 
 </script>
+<script src="/pushraker-updates/system.js"></script>
 </body>
 </html>

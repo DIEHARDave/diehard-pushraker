@@ -54,6 +54,19 @@ PATCHES = [
     ("pushraker/web/index.html",
      "el('nt-name').value = data.name;",
      "el('nt-name').value = data.name; { const n = data.name || (data.meta && data.meta.default_name) || ''; const h = document.querySelector('h1 > span'); if (h) h.textContent = 'Push notifications' + (n ? ' - ' + n : ''); document.title = n ? `${n} · Push notifications` : 'Push notifications'; }"),
+    # First setup fills in the printer URL for the buttons from this
+    # page's address, without its port (:82 on Kiln OS and Zmod, a page of
+    # its own): the buttons open the printer's web UI. The Fill in
+    # choices are unchanged.
+    ("pushraker/web/index.html",
+     "el('nt-printer-url').value = location.protocol + '//' + location.host;",
+     "el('nt-printer-url').value = location.protocol + '//' + location.hostname;"),
+    # The System section (software update notices) above Custom:
+    # web/system.js, served at /pushraker-updates/ next to the update
+    # confirm page.
+    ("pushraker/web/index.html",
+     '</body>',
+     '<script src="/pushraker-updates/system.js"></script>\n</body>'),
 ]
 
 

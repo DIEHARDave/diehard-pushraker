@@ -237,6 +237,51 @@ def parse_days(text: str) -> List[int]:
     return sorted(set(out))
 
 
+def normalize(st: Dict[str, Any]) -> Dict[str, Any]:
+    """The System section's settings, checked and in one form: check_time
+    "09:00, 21:00", check_days "daily" or "mon, wed", notify changes or
+    always, ignore a sorted list. ValueError says what's wrong."""
+    def boolean(v: Any) -> bool:
+        if isinstance(v, str):
+            return v.strip().lower() in ("1", "true", "yes", "on")
+        return bool(v)
+    times = parse_times(", ".join(st.get("check_time"))
+                        if isinstance(st.get("check_time"), list)
+                        else str(st.get("check_time") or ""))
+    days_in = st.get("check_days")
+    if isinstance(days_in, list) and not days_in:
+        raise ValueError("check_days: pick at least one day")
+    days = parse_days(", ".join(days_in) if isinstance(days_in, list)
+                      else str(days_in or "daily"))
+    if not days:
+        raise ValueError("check_days: pick at least one day")
+    notify = str(st.get("notify") or "changes").strip().lower()
+    if notify not in ("changes", "always"):
+        raise ValueError("notify: changes or always")
+    zone = str(st.get("timezone") or "").strip()
+    if zone:
+        try:
+            from zoneinfo import ZoneInfo
+            ZoneInfo(zone)
+        except Exception:
+            raise ValueError(f"timezone: no such time zone: {zone}")
+    ignore = st.get("ignore") or []
+    if isinstance(ignore, str):
+        ignore = ignore.split(",")
+    return {
+        "enabled": boolean(st.get("enabled", True)),
+        "check_time": ", ".join("%02d:%02d" % t for t in times),
+        "check_days": "daily" if len(days) == 7 else
+        ", ".join(DAYS[d] for d in days),
+        "timezone": zone,
+        "notify": notify,
+        "ignore": sorted({str(n).strip() for n in ignore if str(n).strip()},
+                         key=str.lower),
+        "confirm": boolean(st.get("confirm", True)),
+        "other_services": boolean(st.get("other_services", False)),
+    }
+
+
 def next_run(now: datetime.datetime, times: List[Tuple[int, int]],
              days: List[int]) -> datetime.datetime:
     """The first scheduled time after now (now carries the time zone)."""
@@ -301,26 +346,25 @@ class PushrakerUpdates:
     def __init__(self, config: Any) -> None:
         self.server = config.get_server()
         self.eventloop = self.server.get_event_loop()
-        self.enabled = config.getboolean("enabled", True)
-        self.times = parse_times(config.get("check_time", "09:00"))
-        self.days = parse_days(config.get("check_days", "daily"))
-        self.timezone: Optional[datetime.tzinfo] = None
-        zone = config.get("timezone", "").strip()
-        if zone:
-            try:
-                from zoneinfo import ZoneInfo
-                self.timezone = ZoneInfo(zone)
-            except Exception as e:
-                raise config.error(
-                    f"[{config.get_name()}] timezone: {zone}: {e}")
-        self.repeat = config.get("notify", "changes").strip().lower()
-        if self.repeat not in ("changes", "always"):
-            raise config.error(
-                f"[{config.get_name()}] notify: changes or always")
-        self.ignore = {n.strip() for n in
-                       config.get("ignore", "").split(",") if n.strip()}
+        # The settings the page's System section edits: this section's
+        # values are the defaults, what the page saved (state "settings")
+        # wins
+        self.defaults = {
+            "enabled": config.getboolean("enabled", True),
+            "check_time": config.get("check_time", "09:00"),
+            "check_days": config.get("check_days", "daily"),
+            "timezone": config.get("timezone", "").strip(),
+            "notify": config.get("notify", "changes").strip().lower(),
+            "ignore": [n.strip() for n in config.get("ignore", "").split(",")
+                       if n.strip()],
+            "confirm": config.getboolean("confirm", True),
+            "other_services": config.getboolean("other_services", False),
+        }
+        try:
+            self.settings = normalize(self.defaults)
+        except ValueError as e:
+            raise config.error(f"[{config.get_name()}] {e}")
         self.buttons = config.getboolean("buttons", True)
-        self.confirm = config.getboolean("confirm", True)
         self.page_url = config.get(
             "page_url", "http://{host}:82/pushraker-updates/")
         # The card's "Open in browser" link (pushraker's web_ui_url wins
@@ -331,7 +375,6 @@ class PushrakerUpdates:
         self.addons_entry = config.get("addons_entry", "")
         self.addons_url = config.get(
             "addons_url", "https://github.com/DIEHARDave")
-        self.other_services = config.getboolean("other_services", False)
         self.webhooks = config.get("webhooks", "auto").strip().lower()
         if self.webhooks not in ("auto", "always", "never"):
             raise config.error(
@@ -356,6 +399,15 @@ class PushrakerUpdates:
         self.state_path = os.path.join(data_path, ".pushraker_updates.json")
         self.state: Dict[str, Any] = self._load()
         self.state.setdefault("printer", secrets.token_hex(3))
+        saved = self.state.get("settings")
+        if isinstance(saved, dict):
+            try:
+                self.settings = normalize(dict(self.defaults, **saved))
+            except ValueError as e:
+                logging.warning(f"{LOG} saved settings ignored: {e}")
+        self._apply_settings()
+        # Set when the settings change: the scheduler starts over
+        self._wake = asyncio.Event()
         self._tasks: set = set()
         self._gateways: Dict[str, Gateway] = {}
         self._owners: Dict[str, str] = {}
@@ -367,6 +419,10 @@ class PushrakerUpdates:
             "/server/pushraker_updates/check", ["POST"], self._ep_check)
         self.server.register_endpoint(
             "/server/pushraker_updates/status", ["GET"], self._ep_status)
+        # The settings page's System section
+        self.server.register_endpoint(
+            "/server/pushraker_updates/settings", ["GET", "POST"],
+            self._ep_settings)
         # The settings page shows this beside pushraker's version, so it's
         # clear whether pushraker or the add-ons changed
         self.server.register_endpoint(
@@ -383,15 +439,68 @@ class PushrakerUpdates:
         except Exception as e:
             raise config.error(f"[{config.get_name()}] {key}: {e}")
 
+    def _apply_settings(self) -> None:
+        st = self.settings
+        self.enabled = st["enabled"]
+        self.times = parse_times(st["check_time"])
+        self.days = parse_days(st["check_days"])
+        self.timezone: Optional[datetime.tzinfo] = None
+        if st["timezone"]:
+            from zoneinfo import ZoneInfo
+            self.timezone = ZoneInfo(st["timezone"])
+        self.repeat = st["notify"]
+        self.ignore = set(st["ignore"])
+        self.confirm = st["confirm"]
+        self.other_services = st["other_services"]
+
     async def component_init(self) -> None:
         self._save()
         if not self.enabled:
-            logging.info(f"{LOG} off (enabled: False)")
-            return
+            logging.info(f"{LOG} update notices are off")
         self._spawn(self._schedule())
         if self.state.get("queue"):
             self._spawn(self._resume())
         self._reconcile()
+
+    async def _ep_settings(self, web_request: Any) -> Dict[str, Any]:
+        method = str(getattr(web_request.get_request_type(), "name", "")
+                     or web_request.get_request_type()).upper()
+        if method.endswith("POST"):
+            args = dict(web_request.get_args() or {})
+            try:
+                new = normalize(dict(self.settings, **{
+                    k: v for k, v in args.items() if k in self.defaults}))
+            except ValueError as e:
+                raise self.server.error(str(e), 400)
+            self.settings = new
+            self._apply_settings()
+            # What differs from moonraker.conf's section is kept
+            self.state["settings"] = {k: v for k, v in new.items()
+                                      if v != normalize(self.defaults)[k]}
+            self._save()
+            self._wake.set()
+            self._reconcile()
+            logging.info(f"{LOG} settings saved from the page: {new}")
+        entries: List[str] = []
+        try:
+            status = await self._status(refresh=False)
+            entries = sorted((status.get("version_info") or {}).keys(),
+                             key=str.lower)
+        except Exception:
+            pass
+        tz = self._tz()
+        return {
+            "settings": self.settings,
+            "defaults": normalize(self.defaults),
+            "entries": entries,
+            "next_check": self._next.isoformat()
+            if self._next and self.enabled else None,
+            "last_check": self.state.get("last_check"),
+            "timezone": str(getattr(tz, "key", "") or tz or "") or
+            time.strftime("%Z"),
+            "updates": len((self.state.get("notice") or {}).get("items")
+                           or []),
+        }
 
     async def close(self) -> None:
         for gw in list(self._gateways.values()):
@@ -555,13 +664,27 @@ class PushrakerUpdates:
 
     # ---- schedule --------------------------------------------------------
 
+    async def _nap(self, seconds: float) -> bool:
+        """Sleep; True if the settings changed meanwhile."""
+        try:
+            await asyncio.wait_for(self._wake.wait(), seconds)
+        except asyncio.TimeoutError:
+            return False
+        self._wake.clear()
+        return True
+
     async def _schedule(self) -> None:
         while True:
+            if not self.enabled:
+                self._next = None
+                await self._nap(3600.)
+                continue
             # The wait starts now; the next run is worked out again at
             # every wake, in the time zone of that moment (pushraker reads
             # its settings, time zone included, after this starts)
             after = datetime.datetime.now(datetime.timezone.utc)
             shown = None
+            changed = False
             while True:
                 tz = self._tz()
                 self._next = next_run(after.astimezone(tz), self.times,
@@ -574,7 +697,11 @@ class PushrakerUpdates:
                     datetime.timezone.utc)).total_seconds()
                 if left <= 0:
                     break
-                await asyncio.sleep(min(left, 300.))
+                if await self._nap(min(left, 300.)):
+                    changed = True
+                    break
+            if changed or not self.enabled:
+                continue
             started = time.time()
             while True:
                 try:

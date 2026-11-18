@@ -581,6 +581,85 @@ check(pages and all("/server/pushraker_addons/info" in open(p, encoding="utf-8")
                     for p in pages),
       "the page patch (tools/vendor.py) asks for the add-on version")
 
+# ---- the settings page's System section ---------------------------------
+class Req:
+    def __init__(self, method, args=None):
+        self.method, self.args = method, args or {}
+
+    def get_request_type(self):
+        return types.SimpleNamespace(name=self.method)
+
+    def get_args(self):
+        return self.args
+
+    def get_boolean(self, key, default):
+        return default
+
+
+check(pu.normalize({"check_time": "21:00,9:00", "check_days": ["sun", "mon"],
+                    "ignore": "b, a"}) ==
+      {"enabled": True, "check_time": "09:00, 21:00",
+       "check_days": "mon, sun", "timezone": "", "notify": "changes",
+       "ignore": ["a", "b"], "confirm": True, "other_services": False},
+      "settings normalized: times sorted, days by name, ignore a list")
+check(pu.normalize({"check_time": "07:30", "check_days": [d for d, _ in
+      [("mon", 0), ("tue", 0), ("wed", 0), ("thu", 0), ("fri", 0),
+       ("sat", 0), ("sun", 0)]]})["check_days"] == "daily",
+      "all seven days are daily")
+for bad, why in (({"check_time": "25:00"}, "check_time"),
+                 ({"check_days": []}, "check_days"),
+                 ({"notify": "sometimes"}, "notify"),
+                 ({"timezone": "Mars/Base"}, "timezone")):
+    try:
+        pu.normalize(dict({"check_time": "09:00"}, **bad))
+        check(False, f"bad {why} refused")
+    except ValueError as e:
+        check(why in str(e), f"bad {why} refused: {e}")
+
+data7 = tempfile.mkdtemp()
+comp7, server7, um7, _ = make({"check_time": "09:00", "notify": "changes"},
+                              hook_rows, data=data7)
+run(comp7.component_init())
+ep = server7.endpoints["/server/pushraker_updates/settings"]
+got = run(ep(Req("GET")))
+check(got["settings"]["check_time"] == "09:00" and got["settings"]["enabled"]
+      and "fluidd" in got["entries"] and got["defaults"] == got["settings"],
+      "GET: the moonraker.conf values, and the update manager's entries")
+try:
+    run(ep(Req("POST", {"check_time": "nope"})))
+    check(False, "POST with a bad time refused")
+except ServerError as e:
+    check(e.status_code == 400 and comp7.settings["check_time"] == "09:00",
+          "POST with a bad time refused (400), nothing changed")
+got = run(ep(Req("POST", {"enabled": False, "check_time": "06:15, 18:45",
+                          "check_days": ["sat", "sun"], "notify": "always",
+                          "ignore": ["mainsail"], "junk": 1})))
+check(not comp7.enabled and comp7.times == [(6, 15), (18, 45)] and
+      comp7.days == [5, 6] and comp7.repeat == "always" and
+      comp7.ignore == {"mainsail"}, "POST applies at once")
+check(got["next_check"] is None, "off: no next check")
+saved = json.load(open(os.path.join(data7, ".pushraker_updates.json")))
+check(saved["settings"] == {"enabled": False, "check_time": "06:15, 18:45",
+                            "check_days": "sat, sun", "notify": "always",
+                            "ignore": ["mainsail"]},
+      "only what differs from moonraker.conf is kept")
+run(comp7.close())
+comp8, server8, _, _ = make({"check_time": "09:00"}, hook_rows, data=data7)
+check(comp8.settings["check_time"] == "06:15, 18:45" and not comp8.enabled,
+      "saved settings win over moonraker.conf after a restart")
+# The scheduler follows a change at once
+run(comp8.component_init())
+run(settle())
+check(comp8._next is None, "off: the scheduler waits")
+run(server8.endpoints["/server/pushraker_updates/settings"](
+    Req("POST", {"enabled": True})))
+run(settle())
+run(asyncio.sleep(0.01))
+run(settle())
+check(comp8._next is not None and (comp8._next.hour, comp8._next.minute)
+      in ((6, 15), (18, 45)), f"on again: next check {comp8._next}")
+run(comp8.close())
+
 # status endpoint, remote method registered
 st = run(server.endpoints["/server/pushraker_updates/status"](None))
 check("next_check" in st and "pushraker_check_updates" in server.remote,

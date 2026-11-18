@@ -87,14 +87,22 @@ Updates are refused while printing. When Moonraker (or the OS) updates
 itself it restarts, and the card gets the result once it's back. An entry
 with local changes is listed with a warning instead of a button.
 
-The settings are under `[pushraker_updates]` (in the plugin's Moonraker
-config, see [What it changes](#what-it-changes)):
+Set them up on the settings page: the **System** group above Custom has a
+**Software updates** row. Its Push box turns the notices on or off, and
+**Edit** opens the schedule: check times, days, whether to send only when
+something new is out, the time zone, entries to leave out, and **Check
+now**. Save & Apply saves it, with no restart.
+
+The page's settings are kept in `printer_data/.pushraker_updates.json`.
+`[pushraker_updates]` in the plugin's Moonraker config (see
+[What it changes](#what-it-changes)) has the defaults, and the options the
+page doesn't show:
 
 - `check_time`: one or more `HH:MM`.
 - `check_days`: `daily`, `weekdays`, or days such as `mon, thu`.
 - `timezone`: by default pushraker's time zone setting, else the printer's.
 - `notify`: `changes` (only when something new shows up) or `always`.
-- `ignore`, `confirm`, `allowed_users`, `web_ui_url`.
+- `ignore`, `confirm`, `allowed_users`, `web_ui_url`, `other_services`.
 - `bot_token` + `channel` (optional): real buttons in a server channel.
 
 To check now: the console macro `PUSHRAKER_CHECK_UPDATES` (Kiln, Zmod), or

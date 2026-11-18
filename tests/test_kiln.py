@@ -358,6 +358,12 @@ check("el('nt-fc-loaded') ?" in page, "settings page filament-change fix")
 check("/server/pushraker_addons/info" in page, "settings page: add-on version line")
 check("'Push notifications' + (n ? ' - ' + n : '')" in page,
       "settings page: printer name in the page header")
+check("value = location.protocol + '//' + location.hostname;" in page and
+      "value = location.protocol + '//' + location.host;" not in page,
+      "settings page: first-setup printer URL without the port")
+check('<script src="/pushraker-updates/system.js"></script>' in page and
+      os.path.isfile(os.path.join(HERE, "web", "system.js")),
+      "settings page loads the System section (web/system.js)")
 
 with open(os.path.join(HERE, "root", "install.sh"), encoding="utf-8") as f:
     inst = f.read()
