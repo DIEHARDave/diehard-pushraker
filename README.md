@@ -138,8 +138,10 @@ Then in the console (Fluidd, Mainsail or HelixScreen):
 ENABLE_PLUGIN NAME=diehard-pushraker ROOT=1
 ```
 
-`ROOT=1` lets the plugin's root script add an nginx server on port 82 for
-the settings page (Kiln's port 80 server is in the read-only image).
+`ROOT=1` lets the plugin's root script add the settings page to nginx:
+inside the port 81 server of [mainsail-kiln](https://github.com/DIEHARDave/mainsail-kiln)
+(2.1.0 or later), else on a server of its own on port 82 (Kiln's port 80
+server is in the read-only image).
 
 ### Zmod
 
@@ -184,8 +186,19 @@ Open the settings page, add where the notifications should go, choose
 which events you want, and Save & Apply. Notifications are off until you
 do.
 
-- Kiln OS and Zmod: **http://&lt;printer&gt;:82/notifications/**
+- Kiln OS and Zmod: **http://&lt;printer&gt;:81/notifications/**, on the same
+  port as the second web UI of [mainsail-kiln](https://github.com/DIEHARDave/mainsail-kiln)
+  (2.1.0+) or [zmod_dualweb](https://github.com/DIEHARDave/zmod_dualweb)
+  (1.0.0+). Without either: **http://&lt;printer&gt;:82/notifications/**.
 - FLSUN T1: **http://&lt;printer&gt;/notifications/** (also on Fluidd's port 81)
+
+In **Mainsail**, the sidebar gets a **Push notifications** link (between
+Timelapse and Machine) that opens the page in a new tab, whatever port it
+is on. Fluidd has no custom sidebar links yet.
+
+<p align="center">
+  <img src="docs/images/mainsail-sidebar.png" alt="Mainsail sidebar with the Push notifications link" width="220">
+</p>
 
 ## What it changes
 
@@ -199,9 +212,12 @@ do.
   `CANCEL_PRINT` run `_PRINT_END_NTFY` / `_CANCEL_PRINT_NTFY` first. The
   print-end and cancel snapshots are then taken before the toolhead parks.
   Kiln's files are not touched.
-- **nginx (root):** `/data/ad5x/nginx/diehard-pushraker.conf`, a server on
-  port 82 with the settings page, the update confirm page and the Moonraker
-  API they use. `DISABLE_PLUGIN NAME=diehard-pushraker` removes it.
+- **nginx (root):** `/data/ad5x/nginx/port81.d/diehard-pushraker.conf`, the
+  settings page and the update confirm page as locations that
+  mainsail-kiln's port 81 server includes. Without mainsail-kiln 2.1.0+,
+  also `/data/ad5x/nginx/diehard-pushraker.conf`, a server on port 82 with
+  those pages and the Moonraker API they use.
+  `DISABLE_PLUGIN NAME=diehard-pushraker` removes both.
 
 **Zmod** (`diehard-pushraker.cfg`, `diehard-pushraker.moonraker.conf`,
 `platform/zmod/`):
@@ -218,10 +234,13 @@ do.
     into Klipper's extras) runs pushraker's cancel hook at its start, once
     per cancel (Zmod passes a cancel to the native screen, which sends it
     back).
-- **Settings page:** a second nginx on port 82, built from Zmod's own nginx
-  template (as [zmod_dualweb](https://github.com/DIEHARDave/zmod_dualweb)
-  does for port 81), started at every Klipper start. `PUSHRAKER_WEB` shows
-  whether it runs, `PUSHRAKER_WEB STOP=1` stops it.
+- **Settings page:** at every Klipper start, `platform/zmod/web.sh` puts it
+  in `mod_data/dualweb.d/diehard-pushraker.conf`, which
+  [zmod_dualweb](https://github.com/DIEHARDave/zmod_dualweb)'s port 81
+  server includes. Without zmod_dualweb 1.0.0+ it runs a second nginx on
+  port 82 instead, built from Zmod's own nginx template.
+  `PUSHRAKER_WEB` shows where it is, `PUSHRAKER_WEB STOP=1` stops the port
+  82 server.
 
 `DISABLE_PLUGIN name=diehard-pushraker` takes it all out again.
 
@@ -242,6 +261,13 @@ do.
   and after each update: it wires in what changed and restarts only that
   (Klipper only when no print is running). `journalctl -u diehard-pushraker`
   shows what the last sync did.
+
+On every printer, Moonraker adds the **Push notifications** link to
+Mainsail's `config/.theme/navi.json` at each start, keeping any other
+entries. When `.theme` is a theme plugin's folder (FF_Themes,
+FLSUN_theme), the file is kept out of that repo's git status, so the theme
+doesn't show up as changed in the update manager. `sidebar_link: False`
+under `[pushraker_updates]` takes it out, and so does uninstalling.
 
 On every printer, the notification settings are in
 `printer_data/config/pushraker.conf`, and tokens and passwords in

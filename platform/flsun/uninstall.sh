@@ -38,6 +38,9 @@ if [ -x "${VENV}/bin/python" ]; then
     (cd "$HOME" && PYTHONPATH="${REPO_DIR}/python" "${VENV}/bin/python" -m pushraker uninstall) || true
 fi
 
+msg "Removing the Mainsail sidebar link"
+"${VENV}/bin/python" -I -c 'import importlib.util as u, sys; s = u.spec_from_file_location("p", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.sidebar_entry(sys.argv[2], False))' "${REPO_DIR}/moonraker/components/pushraker_updates.py" "${CONFIG_DIR}" 2>/dev/null || true
+
 msg "Removing the Discord card and update notice components"
 for comp in pushraker_cards pushraker_updates; do
     [ -L "${COMPONENTS_DIR}/${comp}.py" ] && rm -f "${COMPONENTS_DIR}/${comp}.py"

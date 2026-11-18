@@ -589,14 +589,14 @@ class PushrakerUpdates:
 
     async def component_init(self) -> None:
         self._save()
-        if self.sidebar_link:
-            try:
-                changed = await self.eventloop.run_in_thread(
-                    sidebar_entry, self.config_dir, True)
-                if changed:
-                    logging.info(f"{LOG} {changed}")
-            except Exception as e:
-                logging.info(f"{LOG} Mainsail sidebar link not added: {e}")
+        # Mainsail's sidebar link, or (sidebar_link: False) none
+        try:
+            changed = await self.eventloop.run_in_thread(
+                sidebar_entry, self.config_dir, self.sidebar_link)
+            if changed:
+                logging.info(f"{LOG} {changed}")
+        except Exception as e:
+            logging.info(f"{LOG} Mainsail sidebar link not changed: {e}")
         if not self.enabled:
             logging.info(f"{LOG} update notices are off")
         self._spawn(self._schedule())

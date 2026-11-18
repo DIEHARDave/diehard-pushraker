@@ -38,6 +38,10 @@ fi
 
 # ---- chroot: Moonraker -----------------------------------------------------
 PUSHRAKER_WEB_CHROOT=1 /bin/sh "$CHROOT_PLUGIN_DIR/platform/zmod/web.sh" stop
+# Mainsail's sidebar link (config/.theme/navi.json)
+PY=/root/moonraker-env/bin/python3
+[ -x "$PY" ] || PY=python3
+"$PY" -I -c 'import importlib.util as u, sys; s = u.spec_from_file_location("p", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m); print(m.sidebar_entry(sys.argv[2], False))' "$CHROOT_PLUGIN_DIR/moonraker/components/pushraker_updates.py" "$CONFIG_DIR" 2>/dev/null || true
 # The pages on zmod_dualweb's port 81
 if [ -f /opt/config/mod_data/dualweb.d/diehard-pushraker.conf ]; then
     rm -f /opt/config/mod_data/dualweb.d/diehard-pushraker.conf
