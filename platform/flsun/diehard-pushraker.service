@@ -1,0 +1,16 @@
+[Unit]
+Description=diehard-pushraker: keep pushraker wired into Moonraker and Klipper
+Wants=network-online.target
+After=network-online.target flsun-timesync.service moonraker.service
+
+[Service]
+# Runs at boot (a FLSun firmware update can undo changes) and whenever
+# Moonraker restarts it after updating diehard-pushraker. Type=simple so
+# that restart returns at once: sync.sh may restart Moonraker itself.
+Type=simple
+ExecStart=/home/pi/diehard-pushraker/platform/flsun/sync.sh
+# Let a sync finish even if this unit is restarted again meanwhile.
+KillMode=none
+
+[Install]
+WantedBy=multi-user.target
