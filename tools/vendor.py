@@ -64,6 +64,35 @@ PATCHES = [
     # The System section (software update notices) above Custom:
     # web/system.js, served at /pushraker-updates/ next to the update
     # confirm page.
+    # pushraker.conf in Moonraker's "config" root, not next to
+    # moonraker.conf: Kiln OS runs Moonraker with -c /run/moonraker/
+    # moonraker.conf, and /run is emptied at every boot (the settings went
+    # back to the defaults; the token, kept in the data folder, then
+    # "was entered for another service"). A file left in the old place is
+    # copied over once.
+    ("pushraker/component.py",
+     '        config_dir = os.path.dirname(app_args.get("config_file") or "") \\\n'
+     '            or os.path.join(data_path, "config")\n',
+     '        config_dir = os.path.dirname(app_args.get("config_file") or "") \\\n'
+     '            or os.path.join(data_path, "config")\n'
+     '        # pushraker.conf goes in Moonraker\'s "config" root (what Mainsail\n'
+     '        # and Fluidd show), which isn\'t always where moonraker.conf is:\n'
+     '        # Kiln OS starts Moonraker with -c /run/moonraker/moonraker.conf,\n'
+     '        # and /run is emptied at every boot\n'
+     '        try:\n'
+     '            root = self.server.lookup_component("file_manager") \\\n'
+     '                .get_directory("config")\n'
+     '        except Exception:\n'
+     '            root = ""\n'
+     '        if root and os.path.realpath(root) != os.path.realpath(config_dir):\n'
+     '            old = os.path.join(config_dir, cfgmod.CONF_NAME)\n'
+     '            new = os.path.join(root, cfgmod.CONF_NAME)\n'
+     '            if os.path.isfile(old) and not os.path.exists(new):\n'
+     '                try:\n'
+     '                    shutil.copy2(old, new)\n'
+     '                except OSError:\n'
+     '                    pass\n'
+     '            config_dir = root\n'),
     ("pushraker/web/index.html",
      '</body>',
      '<script src="/pushraker-updates/system.js"></script>\n</body>'),

@@ -316,6 +316,74 @@ check("self.rows = rows" in comp_src and
       re.search(r"class Destination\(NamedTuple\):\s*\n\s*channel: str"
                 r"[^\n]*\n\s*ap: apprise\.Apprise", comp_src) is not None,
       "pushraker keeps rows of Destination(channel, ap, ...)")
+
+# pushraker.conf is kept in Moonraker's "config" root, not next to
+# moonraker.conf: Kiln OS runs Moonraker with -c /run/moonraker/
+# moonraker.conf, and /run is emptied at every boot. A file left in the
+# old place is copied over once.
+import shutil  # noqa: E402
+import tempfile  # noqa: E402
+
+_m = re.search(r"\n( +config_dir = os\.path\.dirname\(app_args.*?"
+               r"\n +config_dir = root\n)", comp_src, re.S)
+check(_m is not None, "pushraker.conf location: config root block found")
+if _m:
+    import textwrap  # noqa: E402
+    from pushraker import settings as _cfgmod  # noqa: E402
+    _block = textwrap.dedent(_m.group(1))
+
+    class _FM:
+        def __init__(self, root):
+            self.root = root
+
+        def get_directory(self, name):
+            return self.root if name == "config" else ""
+
+    class _Srv:
+        def __init__(self, root):
+            self.fm = _FM(root)
+
+        def lookup_component(self, name):
+            if name == "file_manager":
+                return self.fm
+            raise KeyError(name)
+
+    def _where(run_dir, root, data):
+        ns = {"os": os, "shutil": shutil, "cfgmod": _cfgmod,
+              "data_path": data,
+              "app_args": {"config_file":
+                           os.path.join(run_dir, "moonraker.conf")},
+              "self": types.SimpleNamespace(server=_Srv(root))}
+        exec(_block, ns)
+        return ns["config_dir"]
+
+    _tmp = tempfile.mkdtemp()
+    try:
+        _run = os.path.join(_tmp, "run")
+        _data = os.path.join(_tmp, "printer_data")
+        _cfg = os.path.join(_data, "config")
+        os.makedirs(_run)
+        os.makedirs(_cfg)
+        with open(os.path.join(_run, "pushraker.conf"), "w") as f:
+            f.write("[pushraker]\nprovider: discord\n")
+        check(_where(_run, _cfg, _data) == _cfg,
+              "Kiln: pushraker.conf in the config root, not /run/moonraker")
+        with open(os.path.join(_cfg, "pushraker.conf")) as f:
+            check("discord" in f.read(),
+                  "a pushraker.conf left in /run/moonraker is copied over")
+        with open(os.path.join(_run, "pushraker.conf"), "w") as f:
+            f.write("[pushraker]\nprovider: ntfy\n")
+        _where(_run, _cfg, _data)
+        with open(os.path.join(_cfg, "pushraker.conf")) as f:
+            check("discord" in f.read(),
+                  "one in the config root is never overwritten")
+        check(_where(_cfg, _cfg, _data) == _cfg,
+              "Zmod/T1 (moonraker.conf in the config root): unchanged")
+        check(_where(_run, "", _data) == _run,
+              "no file_manager config root: next to moonraker.conf")
+    finally:
+        shutil.rmtree(_tmp, ignore_errors=True)
+
 import apprise  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location(
