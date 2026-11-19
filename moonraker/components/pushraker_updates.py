@@ -159,18 +159,16 @@ def normalize_power(saved: Any) -> Dict[str, Dict[str, bool]]:
     return out
 
 
-def power_text(rid: str, name: str, klipper: str,
+def power_text(rid: str, name: str,
                up: Optional[float]) -> Tuple[str, str]:
     """Title and text of a power notice."""
-    ver = f"Klipper {klipper}" if klipper else "Klipper"
     if rid == "printer_on":
-        body = f"{ver} is ready."
-        if up is not None:
-            ago = f"{int(up // 60)} min {int(up % 60)} s" if up >= 60 \
-                else f"{int(up)} s"
-            body += f" The printer booted {ago} ago."
-        return f"🟢 {name} is on", body
-    return f"🔄 {name}: Klipper restarted", f"{ver} is ready again."
+        if up is None:
+            return f"🟢 {name} is on", "The printer is ready."
+        ago = f"{int(up // 60)} min {int(up % 60)} s" if up >= 60 \
+            else f"{int(up)} s"
+        return f"🟢 {name} is on", f"The printer booted {ago} ago."
+    return f"🔄 {name}: Klipper restarted", "The printer is ready again."
 
 
 class FatalGateway(Exception):
@@ -1057,9 +1055,7 @@ class PushrakerUpdates:
         if not dests:
             logging.info(f"{LOG} {rid}: no destination is on")
             return False
-        title, body = power_text(
-            rid, self._name(),
-            str(getattr(push, "_klipper_version", "") or ""), uptime())
+        title, body = power_text(rid, self._name(), uptime())
         # pushraker sends it (its queues, network wait, retries, Discord
         # cards): the row is in its table for this one send
         key = POWER_KEY.format(rid)

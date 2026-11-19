@@ -818,12 +818,14 @@ check(pu.normalize_power(None) == {"printer_on": {"push": True, "email": False},
 check(pu.normalize_power({"klipper_restart": {"push": 1, "junk": 1},
                           "nope": {"push": True}})["klipper_restart"]
       == {"push": True, "email": False}, "power: saved over defaults, junk dropped")
-t, b = pu.power_text("printer_on", "AD5X-2", "v0.13.0", 95.)
-check(t == "🟢 AD5X-2 is on" and b == "Klipper v0.13.0 is ready. "
-      "The printer booted 1 min 35 s ago.", f"printer on text: {t} / {b}")
-t, b = pu.power_text("klipper_restart", "AD5X-2", "", None)
-check(t == "🔄 AD5X-2: Klipper restarted" and b == "Klipper is ready again.",
-      f"restart text: {t} / {b}")
+t, b = pu.power_text("printer_on", "AD5X-2", 95.)
+check(t == "🟢 AD5X-2 is on" and b == "The printer booted 1 min 35 s ago.",
+      f"printer on text: {t} / {b}")
+t, b = pu.power_text("printer_on", "AD5X-2", 42.)
+check(b == "The printer booted 42 s ago.", f"printer on, under a minute: {b}")
+t, b = pu.power_text("klipper_restart", "AD5X-2", None)
+check(t == "🔄 AD5X-2: Klipper restarted" and
+      b == "The printer is ready again.", f"restart text: {t} / {b}")
 
 data10 = tempfile.mkdtemp()
 comp10, server10, _, _ = make({}, {}, data=data10)
@@ -889,7 +891,6 @@ class PushSend:
     tz = utc
     web_ui_url = ""
     _ready_once = True
-    _klipper_version = "v0.13.0"
     settings = {"enabled": True}
     env = None
 
