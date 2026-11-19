@@ -224,9 +224,12 @@
         const keepPower = power && body.querySelector("[data-dp-power]") ? currentPower() : null;
         body.innerHTML = `<tr class="nt-group dp-head"><td colspan="4">DIEHARDave's plugins<a href="https://github.com/DIEHARDave/diehard-pushraker" target="_blank" rel="noopener">diehard-pushraker ↗</a></td></tr>`
             + systemRows() + powerRows(keepPower);
+        // After the page's own change marking, which clears every mark in
+        // the table (ours too) on each change
+        const later = () => setTimeout(markDirty, 0);
         body.querySelectorAll("input, select").forEach(i => {
-            i.addEventListener("change", markDirty);
-            i.addEventListener("input", markDirty);
+            i.addEventListener("change", later);
+            i.addEventListener("input", later);
         });
         const edit = $("dp-edit");
         if (edit) edit.onclick = () => {
