@@ -852,7 +852,8 @@ sent_rows = []
 async def fake_notice(rid):
     sent_rows.append(rid)
     return True
-real_uptime = pu.uptime
+real_uptime, real_boot = pu.uptime, pu.boot_id
+pu.boot_id = lambda: ""
 for up, first_expect in ((42., ["printer_on"]), (5000., [])):
     pu.uptime = lambda up=up: up
     c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
@@ -881,7 +882,31 @@ run(sv.events["server:klippy_ready"]())
 run(settle())
 check(sent_rows == [], "Printer on off: nothing at boot")
 run(c.close())
-pu.uptime = real_uptime
+
+# Once per boot: a Moonraker restart soon after boot sends nothing
+pu.boot_id = lambda: "boot-a"
+data12 = tempfile.mkdtemp()
+c, sv, _, _ = make({}, {}, data=data12)
+c._power_notice = fake_notice
+sent_rows.clear()
+run(sv.events["server:klippy_ready"]())
+run(settle())
+run(c.close())
+c, sv, _, _ = make({}, {}, data=data12)
+c._power_notice = fake_notice
+run(sv.events["server:klippy_ready"]())
+run(settle())
+check(sent_rows == ["printer_on"],
+      "Moonraker restarted in the same boot: no second Printer on")
+run(c.close())
+pu.boot_id = lambda: "boot-b"
+c, sv, _, _ = make({}, {}, data=data12)
+c._power_notice = fake_notice
+run(sv.events["server:klippy_ready"]())
+run(settle())
+check(sent_rows == ["printer_on", "printer_on"], "the next boot: Printer on")
+run(c.close())
+pu.uptime, pu.boot_id = real_uptime, real_boot
 
 # The send: through pushraker's _send, with the row only for that send
 

@@ -138,6 +138,15 @@ APPRISE_CHANNELS = {"ntfys": "ntfy", "pover": "pushover", "gotifys": "gotify",
                     "jsons": "webhook"}
 
 
+def boot_id() -> str:
+    """This boot's ID (a new one at every boot), "" where there is none."""
+    try:
+        with open("/proc/sys/kernel/random/boot_id") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
 def uptime() -> Optional[float]:
     try:
         with open("/proc/uptime") as f:
@@ -1025,10 +1034,18 @@ class PushrakerUpdates:
         self._seen_ready = True
         if first:
             # Moonraker just started: the printer came on, or only
-            # Moonraker restarted (then nothing)
+            # Moonraker restarted (then nothing). Once per boot: the boot
+            # ID says whether this boot had its notice already (a Moonraker
+            # restart soon after boot is still inside the window)
+            bid = boot_id()
+            if bid and bid == self.state.get("power_boot"):
+                return
             up = uptime()
             if up is None or up >= BOOT_WINDOW:
                 return
+            if bid:
+                self.state["power_boot"] = bid
+                self._save()
             rid = "printer_on"
         else:
             rid = "klipper_restart"
