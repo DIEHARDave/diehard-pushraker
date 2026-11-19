@@ -91,8 +91,9 @@ Updates are refused while printing. When Moonraker (or the OS) updates
 itself it restarts, and the card gets the result once it's back. An entry
 with local changes is listed with a warning instead of a button.
 
-Set them up on the settings page: the **System** group above Custom has a
-**Software updates** row. Its Push box turns the notices on or off, and
+Set them up on the settings page: the **DIEHARDave's plugins** section
+below Custom (where this plugin's additions to pushraker are) has a
+**System** group with a **Software updates** row. Its Push box turns the notices on or off, and
 **Edit** opens the schedule: check times, days, whether to send only when
 something new is out, the time zone, entries to leave out, and **Check
 now**. Save & Apply saves it, with no restart.
@@ -115,6 +116,25 @@ page doesn't show:
 
 To check now: the console macro `PUSHRAKER_CHECK_UPDATES` (Kiln, Zmod), or
 `curl -X POST http://localhost:7125/server/pushraker_updates/check`.
+
+## Printer on / Klipper restarted
+
+The **Power** group under **DIEHARDave's plugins** has two more rows. They
+go to pushraker's own destinations (the push service, email, and the
+webhook, which gets everything that is on) and use its delivery, so a
+notice sent before Wi-Fi is up waits for the network.
+
+- **🟢 Printer on** (Push on by default): the first time Klipper is ready
+  after the printer boots, at high priority. It says how long ago the
+  printer booted. "Boots" means the printer came up less than 10 minutes
+  ago. A Moonraker restart alone doesn't count.
+- **🔄 Klipper restarted** (off by default): every later Klipper ready,
+  such as `RESTART`, `FIRMWARE_RESTART` or saving the config.
+
+If Klipper can't get ready (an MCU error or a shutdown at boot), neither
+row is sent. pushraker's own *Klipper shutdown* row covers that. The
+choices are kept in `printer_data/.pushraker_updates.json`
+(`GET/POST /server/pushraker_addons/power`).
 
 ## Install
 

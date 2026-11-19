@@ -13,6 +13,8 @@ and a fake Discord (every HTTP call recorded, canned answers):
 - clicks: another printer's card, a stranger, an old card, confirm,
   cancel, while printing, the update itself and the edited card
 - a list cut short by Moonraker's restart continues at start
+- "Printer on" / "Klipper restarted": which Klipper ready sends which,
+  the page's choices, pushraker's destinations for them
 """
 
 import asyncio
@@ -224,6 +226,7 @@ class Server:
         self.comps = {"klippy_connection": Kconn(), "pushraker": Push()}
         self.endpoints = {}
         self.remote = {}
+        self.events = {}
 
     def get_event_loop(self):
         return self.loop
@@ -236,6 +239,9 @@ class Server:
 
     def register_remote_method(self, name, cb):
         self.remote[name] = cb
+
+    def register_event_handler(self, name, cb):
+        self.events[name] = cb
 
     def lookup_component(self, name):
         return self.comps[name]
@@ -803,6 +809,154 @@ if tornado is not None:
     check(g.state.startswith("stopped") and "token" in g.state,
           "Gateway: close 4004 stops it (wrong token): " + g.state)
     srv.stop()
+
+# ---- Printer on / Klipper restarted ---------------------------------------
+check(pu.normalize_power(None) == {"printer_on": {"push": True, "email": False},
+                                   "klipper_restart": {"push": False,
+                                                       "email": False}},
+      "power defaults: Printer on push, Klipper restarted off")
+check(pu.normalize_power({"klipper_restart": {"push": 1, "junk": 1},
+                          "nope": {"push": True}})["klipper_restart"]
+      == {"push": True, "email": False}, "power: saved over defaults, junk dropped")
+t, b = pu.power_text("printer_on", "AD5X-2", "v0.13.0", 95.)
+check(t == "🟢 AD5X-2 is on" and b == "Klipper v0.13.0 is ready. "
+      "The printer booted 1 min 35 s ago.", f"printer on text: {t} / {b}")
+t, b = pu.power_text("klipper_restart", "AD5X-2", "", None)
+check(t == "🔄 AD5X-2: Klipper restarted" and b == "Klipper is ready again.",
+      f"restart text: {t} / {b}")
+
+data10 = tempfile.mkdtemp()
+comp10, server10, _, _ = make({}, {}, data=data10)
+check("server:klippy_ready" in server10.events, "listens for klippy_ready")
+pep = server10.endpoints["/server/pushraker_addons/power"]
+got = run(pep(Req("GET")))
+check(got["rows"] == pu.normalize_power(None) and got["last"] is None,
+      "power GET: defaults")
+got = run(pep(Req("POST", {"klipper_restart": {"push": True, "email": True},
+                           "printer_on": {"email": True}, "junk": 1})))
+check(got["rows"] == {"printer_on": {"push": True, "email": True},
+                      "klipper_restart": {"push": True, "email": True}},
+      "power POST: merged per row")
+run(pep(Req("POST", {"printer_on": {"push": False, "email": False}})))
+run(comp10.close())
+comp11, server11, _, _ = make({}, {}, data=data10)
+check(comp11.power["printer_on"] == {"push": False, "email": False} and
+      comp11.power["klipper_restart"]["push"], "power choices survive a restart")
+
+# Which ready sends which (the sending itself recorded)
+sent_rows = []
+
+
+async def fake_notice(rid):
+    sent_rows.append(rid)
+    return True
+real_uptime = pu.uptime
+for up, first_expect in ((42., ["printer_on"]), (5000., [])):
+    pu.uptime = lambda up=up: up
+    c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
+    c._power_notice = fake_notice
+    sent_rows.clear()
+    run(sv.events["server:klippy_ready"]())
+    run(settle())
+    check(sent_rows == first_expect,
+          f"first ready at uptime {up:.0f} s: {first_expect or 'nothing'}")
+    run(sv.events["server:klippy_ready"]())
+    run(settle())
+    check(sent_rows == first_expect,
+          "a later ready: nothing (Klipper restarted is off by default)")
+    c.power["klipper_restart"]["push"] = True
+    run(sv.events["server:klippy_ready"]())
+    run(settle())
+    check(sent_rows == first_expect + ["klipper_restart"],
+          "a later ready with Klipper restarted on: sent")
+    run(c.close())
+pu.uptime = lambda: 42.
+c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
+c._power_notice = fake_notice
+c.power["printer_on"] = {"push": False, "email": False}
+sent_rows.clear()
+run(sv.events["server:klippy_ready"]())
+run(settle())
+check(sent_rows == [], "Printer on off: nothing at boot")
+run(c.close())
+pu.uptime = real_uptime
+
+# The send: through pushraker's _send, with the row only for that send
+
+
+class PushSend:
+    name = "AD5X-2"
+    tz = utc
+    web_ui_url = ""
+    _ready_once = True
+    _klipper_version = "v0.13.0"
+    settings = {"enabled": True}
+    env = None
+
+    def __init__(self):
+        self.rows = {"complete": ("render", [])}
+        self.got = []
+
+    async def _send(self, rid, title, body):
+        self.got.append((rid, title, body, rid in self.rows,
+                         self.rows.get(rid)))
+        return True
+
+
+c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
+ps = PushSend()
+sv.comps["pushraker"] = ps
+c._power_dests = lambda push, rid: ["dest"]
+ok = run(c._power_notice("printer_on"))
+check(ok and len(ps.got) == 1 and ps.got[0][0] == "_diehard_printer_on" and
+      ps.got[0][3] and ps.got[0][4] == ("none", ["dest"]) and
+      ps.got[0][1] == "🟢 AD5X-2 is on", f"sent through pushraker: {ps.got}")
+check(set(ps.rows) == {"complete"}, "the row is gone after the send")
+check(c.state["power_last"]["row"] == "printer_on" and
+      c.state["power_last"]["ok"], "the last send is kept for the page")
+c._power_dests = lambda push, rid: []
+ps.got.clear()
+check(not run(c._power_notice("printer_on")) and not ps.got,
+      "no destination: nothing sent")
+run(c.close())
+
+# pushraker's destinations, from its own settings code
+PY = os.path.join(HERE, "python")
+sys.path.insert(0, PY)
+mr = types.ModuleType("moonraker")
+mrc = types.ModuleType("moonraker.common")
+mrc.JobEvent = type("JobEvent", (), {})
+mrc.KlippyState = type("KlippyState", (), {})
+sys.modules.setdefault("moonraker", mr)
+sys.modules.setdefault("moonraker.common", mrc)
+try:
+    from pushraker import settings as cfgmod
+    import pushraker.component  # noqa: F401
+except Exception as e:
+    cfgmod = None
+    check(False, f"pushraker imports for the destination test: {e}")
+if cfgmod is not None:
+    st = cfgmod.defaults("AD5X-2")
+    st.update(enabled=True, server="https://ntfy.sh", topic="t0pic",
+              webhook_enabled=True, webhook_url="http://10.0.1.206:9/h")
+    ps = PushSend()
+    ps.settings, ps.env = st, cfgmod.Env()
+    c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
+    d = c._power_dests(ps, "printer_on")
+    check([x.channel for x in d] == ["ntfy", "webhook"] and
+          not any(x.email for x in d),
+          f"Printer on: ntfy + the webhook ({[x.channel for x in d]})")
+    url = next(iter(d[0].ap)).url(privacy=False)
+    check("priority=high" in url and "t0pic" in url, "ntfy at high priority")
+    check(c._power_dests(ps, "klipper_restart") == [],
+          "Klipper restarted off: no destination, not even the webhook")
+    c.power["klipper_restart"] = {"push": False, "email": True}
+    check([x.channel for x in c._power_dests(ps, "klipper_restart")]
+          == ["webhook"], "email ticked but not set up: only the webhook")
+    st["enabled"] = False
+    check(c._power_dests(ps, "printer_on") == [],
+          "pushraker turned off: nothing")
+    run(c.close())
 
 for c in made:
     run(c.close())

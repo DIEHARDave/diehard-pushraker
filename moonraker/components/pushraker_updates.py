@@ -37,6 +37,13 @@
 # GET  /server/pushraker_updates/status the schedule, the last check
 # Klipper: {action_call_remote_method("pushraker_check_updates")}
 #
+# Also here, shown under "DIEHARDave's plugins" on the settings page:
+# "Printer on" (the first Klipper ready after the printer booted) and
+# "Klipper restarted" (every later one: RESTART, FIRMWARE_RESTART, a saved
+# config) notices, sent through pushraker's own destinations (push, email,
+# webhook). A Moonraker restart alone sends neither.
+# GET/POST /server/pushraker_addons/power  their Push and Email choices
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 from __future__ import annotations
@@ -112,6 +119,58 @@ REDIRECT = """<!doctype html><meta charset="utf-8"><title>Push notifications</ti
 ADDON_REPOS = {
     "diehard-pushraker": "https://github.com/DIEHARDave/diehard-pushraker",
 }
+
+
+# "Printer on" / "Klipper restarted": the rows, their defaults, and how
+# long after boot a first Klipper ready still counts as the printer coming
+# on (pushraker's power loss check uses the same window)
+POWER_ROWS = ("printer_on", "klipper_restart")
+POWER_DEFAULTS = {"printer_on": {"push": True, "email": False},
+                  "klipper_restart": {"push": False, "email": False}}
+BOOT_WINDOW = 600.
+# pushraker reads its settings at klippy_ready too: wait this long for it
+PUSH_READY_WAIT = 60.
+# The notice's name inside pushraker (a leading _: no template of its own)
+POWER_KEY = "_diehard_{}"
+APPRISE_CHANNELS = {"ntfys": "ntfy", "pover": "pushover", "gotifys": "gotify",
+                    "tgram": "telegram", "discordhook": "discord",
+                    "discorddm": "discord", "json": "webhook",
+                    "jsons": "webhook"}
+
+
+def uptime() -> Optional[float]:
+    try:
+        with open("/proc/uptime") as f:
+            return float(f.read().split()[0])
+    except Exception:
+        return None
+
+
+def normalize_power(saved: Any) -> Dict[str, Dict[str, bool]]:
+    """The Push / Email choices of the power rows: the defaults, with what
+    was saved over them (unknown rows and keys left out)."""
+    out = {rid: dict(v) for rid, v in POWER_DEFAULTS.items()}
+    if isinstance(saved, dict):
+        for rid, row in saved.items():
+            if rid in out and isinstance(row, dict):
+                for k in ("push", "email"):
+                    if k in row:
+                        out[rid][k] = bool(row[k])
+    return out
+
+
+def power_text(rid: str, name: str, klipper: str,
+               up: Optional[float]) -> Tuple[str, str]:
+    """Title and text of a power notice."""
+    ver = f"Klipper {klipper}" if klipper else "Klipper"
+    if rid == "printer_on":
+        body = f"{ver} is ready."
+        if up is not None:
+            ago = f"{int(up // 60)} min {int(up % 60)} s" if up >= 60 \
+                else f"{int(up)} s"
+            body += f" The printer booted {ago} ago."
+        return f"🟢 {name} is on", body
+    return f"🔄 {name}: Klipper restarted", f"{ver} is ready again."
 
 
 class FatalGateway(Exception):
@@ -563,6 +622,14 @@ class PushrakerUpdates:
             self.sidebar_link = False
         self.server.register_remote_method(
             "pushraker_check_updates", self._remote_check)
+        # "Printer on" / "Klipper restarted" (DIEHARDave's plugins)
+        self.power = normalize_power(self.state.get("power"))
+        self._seen_ready = False
+        self.server.register_endpoint(
+            "/server/pushraker_addons/power", ["GET", "POST"],
+            self._ep_power)
+        self.server.register_event_handler(
+            "server:klippy_ready", self._on_klippy_ready)
 
     @staticmethod
     def _template(config: Any, key: str) -> str:
@@ -936,6 +1003,112 @@ class PushrakerUpdates:
             "gateways": {k: g.state for k, g in self._gateways.items()},
             "page_url": self._page(),
         }
+
+    # ---- printer on / Klipper restarted ---------------------------------
+
+    async def _ep_power(self, web_request: Any) -> Dict[str, Any]:
+        method = str(getattr(web_request.get_request_type(), "name", "")
+                     or web_request.get_request_type()).upper()
+        if method.endswith("POST"):
+            args = dict(web_request.get_args() or {})
+            self.power = normalize_power({
+                rid: dict(row, **(args[rid] if isinstance(args.get(rid),
+                                                          dict) else {}))
+                for rid, row in self.power.items()})
+            self.state["power"] = self.power
+            self._save()
+            logging.info(f"{LOG} power notices saved from the page: "
+                         f"{self.power}")
+        return {"rows": self.power, "defaults": normalize_power(None),
+                "last": self.state.get("power_last")}
+
+    async def _on_klippy_ready(self) -> None:
+        first = not self._seen_ready
+        self._seen_ready = True
+        if first:
+            # Moonraker just started: the printer came on, or only
+            # Moonraker restarted (then nothing)
+            up = uptime()
+            if up is None or up >= BOOT_WINDOW:
+                return
+            rid = "printer_on"
+        else:
+            rid = "klipper_restart"
+        row = self.power.get(rid) or {}
+        if row.get("push") or row.get("email"):
+            self._spawn(self._power_notice(rid))
+
+    async def _power_notice(self, rid: str) -> bool:
+        push = self._push()
+        deadline = time.monotonic() + PUSH_READY_WAIT
+        while time.monotonic() < deadline and (
+                push is None or not getattr(push, "_ready_once", False)
+                or not getattr(push, "settings", None)):
+            await asyncio.sleep(1.)
+            push = self._push()
+        if push is None or not getattr(push, "settings", None):
+            logging.info(f"{LOG} {rid}: pushraker isn't set up")
+            return False
+        try:
+            dests = self._power_dests(push, rid)
+        except Exception as e:
+            logging.warning(f"{LOG} {rid}: no destinations: {e}")
+            return False
+        if not dests:
+            logging.info(f"{LOG} {rid}: no destination is on")
+            return False
+        title, body = power_text(
+            rid, self._name(),
+            str(getattr(push, "_klipper_version", "") or ""), uptime())
+        # pushraker sends it (its queues, network wait, retries, Discord
+        # cards): the row is in its table for this one send
+        key = POWER_KEY.format(rid)
+        push.rows[key] = ("none", dests)
+        try:
+            ok = bool(await push._send(key, title, body))
+        finally:
+            rows = getattr(push, "rows", None)
+            if isinstance(rows, dict):
+                rows.pop(key, None)
+        self.state["power_last"] = {
+            "row": rid, "ok": ok,
+            "at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+        self._save()
+        logging.info(f"{LOG} {rid} sent: {ok}")
+        return ok
+
+    def _power_dests(self, push: Any, rid: str) -> List[Any]:
+        """pushraker's destinations for a power row, built as its own rows
+        are: the push service (Push), email (Email), and the webhook,
+        which gets every notification that is on."""
+        import apprise
+        from pushraker import settings as cfgmod
+        from pushraker.component import (Destination, SEND_READ_TIMEOUT,
+                                         SEND_CONNECT_TIMEOUT)
+        s, env = push.settings, push.env
+        row = self.power[rid]
+        prio = "high" if rid == "printer_on" else "default"
+        urls: List[Tuple[str, bool]] = []
+        if row["push"] and cfgmod.push_configured(s):
+            urls.append((cfgmod.row_url(s, rid, prio, env), False))
+        if row["email"] and cfgmod.email_configured(s):
+            urls.append((cfgmod.email_url(s), True))
+        if (row["push"] or row["email"]) and cfgmod.webhook_configured(s):
+            urls.append((cfgmod.webhook_url(s, rid, env), False))
+        dests = []
+        for url, email in urls:
+            ap = apprise.Apprise()
+            if not ap.add(url):
+                continue
+            for srv in ap:
+                srv.socket_read_timeout = max(srv.socket_read_timeout,
+                                              SEND_READ_TIMEOUT)
+                srv.socket_connect_timeout = max(srv.socket_connect_timeout,
+                                                 SEND_CONNECT_TIMEOUT)
+            channel = "email" if email else url.split(":", 1)[0]
+            dests.append(Destination(
+                APPRISE_CHANNELS.get(channel, channel), ap, email))
+        return dests
 
     # ---- the check -------------------------------------------------------
 

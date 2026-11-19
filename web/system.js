@@ -1,16 +1,20 @@
-// diehard-pushraker: the System section of pushraker's settings page.
+// diehard-pushraker: the "DIEHARDave's plugins" section of pushraker's
+// settings page, where this plugin's additions to pushraker live, apart
+// from pushraker's own rows.
 //
 // The page (python/pushraker/web/index.html) loads this through a
 // <script> tag that tools/vendor.py's PATCHES add; it lives in the
 // plugin's web/ folder, served at /pushraker-updates/ next to the update
-// confirm page. It adds a "System" group above "Custom" in the
-// notifications table: the software update notices
-// (moonraker/components/pushraker_updates.py), on or off in the Push
-// column, and their schedule under Edit. Save & Apply saves it too;
-// Discard changes puts it back.
+// confirm page. It adds the section below "Custom" in the notifications
+// table (all from moonraker/components/pushraker_updates.py):
+//   System: the software update notices, on or off in the Push column,
+//     their schedule under Edit
+//   Power: "Printer on" and "Klipper restarted", Push and Email
+// Save & Apply saves it too; Discard changes puts it back.
 //
-// Talks to GET/POST /server/pushraker_updates/settings and
-// POST /server/pushraker_updates/check, like the page talks to Moonraker.
+// Talks to GET/POST /server/pushraker_updates/settings,
+// POST /server/pushraker_updates/check and GET/POST
+// /server/pushraker_addons/power, like the page talks to Moonraker.
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 (function () {
@@ -22,8 +26,11 @@
         c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     const apiKey = () => { try { return localStorage.getItem("pushraker.apiKey") || ""; } catch (e) { return ""; } };
 
-    let data = null;      // the last GET (or POST) answer
+    let data = null;      // the last GET (or POST) answer: update notices
+    let power = null;     // the same for the power rows
     let open = false;     // Edit panel shown
+    const POWER = [["printer_on", "🟢", "Printer on", "The first time Klipper is ready after the printer boots"],
+                   ["klipper_restart", "🔄", "Klipper restarted", "RESTART, FIRMWARE_RESTART, saving the config"]];
 
     async function api(path, method, body) {
         const headers = body ? { "Content-Type": "application/json" } : {};
@@ -81,30 +88,45 @@
     }
     const dirty = () => data && !same(current(), data.settings);
 
+    // The power rows as shown now, and as saved
+    function currentPower() {
+        const out = {};
+        POWER.forEach(([rid]) => {
+            const saved = (power && power.rows[rid]) || {};
+            const p = document.querySelector(`[data-dp-power="${rid}"]`);
+            const e = document.querySelector(`[data-dp-power-email="${rid}"]`);
+            out[rid] = { push: p ? p.checked : !!saved.push, email: e ? e.checked : !!saved.email };
+        });
+        return out;
+    }
+    const savedPower = rid => ({ push: !!power.rows[rid].push, email: !!power.rows[rid].email });
+    const powerChanged = (cur, rid) => cur[rid].push !== savedPower(rid).push || cur[rid].email !== savedPower(rid).email;
+    const powerDirty = () => {
+        if (!power) return false;
+        const cur = currentPower();
+        return POWER.some(([rid]) => powerChanged(cur, rid));
+    };
+
     function markDirty() {
         const row = $("dp-row");
         if (row) row.classList.toggle("nt-chg", !!dirty());
         const note = $("dp-unsaved");
         if (note) note.style.display = dirty() ? "" : "none";
+        if (power) {
+            const cur = currentPower();
+            POWER.forEach(([rid]) => {
+                const r = document.querySelector(`[data-dp-prow="${rid}"]`);
+                if (r) r.classList.toggle("nt-chg", powerChanged(cur, rid));
+            });
+        }
     }
 
-    function render() {
-        let body = $("dp-system");
-        if (!body) {
-            const crows = $("nt-crows");
-            if (!crows) return;
-            body = document.createElement("tbody");
-            body.id = "dp-system";
-            crows.parentNode.insertBefore(body, crows);
-        }
-        if (!data) {
-            body.innerHTML = "";
-            return;
-        }
+    function systemRows() {
+        if (!data) return "";
         const st = data.settings;
         const next = st.enabled ? `Next check ${esc(when(data.next_check))}` : "Off";
         const waiting = data.updates ? ` · ${data.updates} update${data.updates === 1 ? "" : "s"} waiting` : "";
-        let html = `<tr class="nt-group"><td colspan="4">System</td></tr>
+        let html = `<tr class="nt-group dp-sub"><td colspan="4">System</td></tr>
             <tr class="nt-crow" id="dp-row">
               <td><span class="nt-icon">⬆️</span><span class="nt-name">Software updates</span>
                 <span class="nt-sub">${esc(summary(st))}</span>
@@ -160,12 +182,54 @@
               </div>
             </td></tr>`;
         }
-        body.innerHTML = html;
+        return html;
+    }
+
+    function powerRows(keep) {
+        if (!power) return "";
+        const lastName = power.last && (POWER.find(r => r[0] === power.last.row) || [])[2];
+        const last = power.last && power.last.at
+            ? `<span class="nt-sub">Last sent ${esc(when(power.last.at))}: ${esc(lastName || power.last.row)}${power.last.ok ? "" : " (not delivered)"}</span>` : "";
+        return `<tr class="nt-group dp-sub"><td colspan="4">Power</td></tr>` + POWER.map(([rid, icon, name, sub], i) => {
+            const v = (keep || {})[rid] || power.rows[rid];
+            return `<tr class="nt-crow" data-dp-prow="${rid}">
+              <td><span class="nt-icon">${icon}</span><span class="nt-name">${esc(name)}</span>
+                <span class="nt-sub">${esc(sub)}</span>${i === 0 ? last : ""}</td>
+              <td class="nt-c nt-col-push"><input type="checkbox" data-dp-power="${rid}"${v.push ? " checked" : ""}></td>
+              <td class="nt-c nt-col-email"><input type="checkbox" data-dp-power-email="${rid}"${v.email ? " checked" : ""}></td>
+              <td class="nt-data"></td>
+            </tr>`;
+        }).join("");
+    }
+
+    function render() {
+        let body = $("dp-plugins");
+        if (!body) {
+            const crows = $("nt-crows");
+            if (!crows) return;
+            body = document.createElement("tbody");
+            body.id = "dp-plugins";
+            crows.parentNode.insertBefore(body, crows.nextSibling);
+            const css = document.createElement("style");
+            css.textContent = `.nt-table tr.dp-head td { padding-top: 18px; font-size: 13px; font-weight: 600; color: var(--accent); }
+                .nt-table tr.dp-head a { font-weight: 400; font-size: 12px; margin-left: 8px; opacity: .8; }
+                .nt-table tr.dp-sub td { padding-left: 12px; }`;
+            document.head.appendChild(css);
+        }
+        if (!data && !power) {
+            body.innerHTML = "";
+            return;
+        }
+        // Ticks not saved yet survive a redraw (Edit / Close)
+        const keepPower = power && body.querySelector("[data-dp-power]") ? currentPower() : null;
+        body.innerHTML = `<tr class="nt-group dp-head"><td colspan="4">DIEHARDave's plugins<a href="https://github.com/DIEHARDave/diehard-pushraker" target="_blank" rel="noopener">diehard-pushraker ↗</a></td></tr>`
+            + systemRows() + powerRows(keepPower);
         body.querySelectorAll("input, select").forEach(i => {
             i.addEventListener("change", markDirty);
             i.addEventListener("input", markDirty);
         });
-        $("dp-edit").onclick = () => {
+        const edit = $("dp-edit");
+        if (edit) edit.onclick = () => {
             const keep = current();
             open = !open;
             render();
@@ -193,15 +257,33 @@
     }
 
     async function load() {
-        try {
-            data = await api("/server/pushraker_updates/settings");
-        } catch (e) {
-            data = null;   // no update notices on this printer: no section
-        }
+        const [d, p] = await Promise.all([
+            // none: no System rows
+            api("/server/pushraker_updates/settings").catch(() => null),
+            // an older component: no Power rows
+            api("/server/pushraker_addons/power").catch(() => null),
+        ]);
+        data = d;
+        power = p;
         render();
     }
 
+    async function savePower() {
+        if (!powerDirty()) return;
+        try {
+            power = await api("/server/pushraker_addons/power", "POST", currentPower());
+        } catch (e) {
+            const r = document.querySelector("[data-dp-prow]");
+            const sub = r && r.querySelector(".nt-sub");
+            if (sub) { sub.textContent = `Not saved: ${e.message}`; sub.style.color = "var(--error)"; }
+            return;
+        }
+        render();
+        markDirty();
+    }
+
     async function save() {
+        await savePower();
         if (!dirty()) return;
         const msg = $("dp-msg");
         try {
