@@ -1323,10 +1323,28 @@ class PushNotifications:
                         "include pushraker.cfg in printer.cfg for the "
                         "print-end and cancel snapshots", HOOKS_MACRO)
                 return
-            for key, value in values.items():
-                await kapis.run_gcode(
-                    f"SET_GCODE_VARIABLE MACRO={HOOKS_MACRO} "
-                    f"VARIABLE={key} VALUE={value}")
+            # Only what Klipper doesn't have already, in one line when the
+            # macro file has _NTFY_HOOKS_SET (each command shows in the
+            # console, after every Klipper restart)
+            res = await kapis.query_objects(
+                {f"gcode_macro {HOOKS_MACRO}": None}, default={})
+            have = res.get(f"gcode_macro {HOOKS_MACRO}") or {}
+
+            def same(a: Any, b: Any) -> bool:
+                try:
+                    return float(a) == float(b)
+                except (TypeError, ValueError):
+                    return False
+            todo = {k: v for k, v in values.items()
+                    if not same(have.get(k), v)}
+            if todo and f"gcode_macro {HOOKS_MACRO}_SET" in objs:
+                args = " ".join(f"{k.upper()}={v}" for k, v in todo.items())
+                await kapis.run_gcode(f"{HOOKS_MACRO}_SET {args}")
+            else:
+                for key, value in todo.items():
+                    await kapis.run_gcode(
+                        f"SET_GCODE_VARIABLE MACRO={HOOKS_MACRO} "
+                        f"VARIABLE={key} VALUE={value}")
             self.hook_values = values
         except Exception as e:
             logging.warning("[pushraker] print hooks not set: %s", e)

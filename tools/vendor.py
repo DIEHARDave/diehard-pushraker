@@ -93,6 +93,17 @@ PATCHES = [
      '                except OSError:\n'
      '                    pass\n'
      '            config_dir = root\n'),
+    # Klipper restarts: the hook variables were set with one
+    # SET_GCODE_VARIABLE line each in the console (4 per restart). Now
+    # only the values Klipper doesn't have already, in one line through
+    # _NTFY_HOOKS_SET (the per-variable lines when the macro file has no
+    # _NTFY_HOOKS_SET, e.g. the Snapmaker U1's own copy).
+    ('pushraker/klipper/pushraker.cfg',
+     '[gcode_macro _NTFY_LIFT]',
+     '[gcode_macro _NTFY_HOOKS_SET]\ndescription: Set the pushraker print hook variables in one line (the component)\ngcode:\n    {% for key in ["complete", "cancelled", "fault", "lift_mm", "lift_ceiling"] %}\n    {% if key|upper in params %}\n    SET_GCODE_VARIABLE MACRO=_NTFY_HOOKS VARIABLE={key} VALUE={params[key|upper]|float}\n    {% endif %}\n    {% endfor %}\n\n[gcode_macro _NTFY_LIFT]'),
+    ('pushraker/component.py',
+     '                return\n            for key, value in values.items():\n                await kapis.run_gcode(\n                    f"SET_GCODE_VARIABLE MACRO={HOOKS_MACRO} "\n                    f"VARIABLE={key} VALUE={value}")\n',
+     '                return\n            # Only what Klipper doesn\'t have already, in one line when the\n            # macro file has _NTFY_HOOKS_SET (each command shows in the\n            # console, after every Klipper restart)\n            res = await kapis.query_objects(\n                {f"gcode_macro {HOOKS_MACRO}": None}, default={})\n            have = res.get(f"gcode_macro {HOOKS_MACRO}") or {}\n\n            def same(a: Any, b: Any) -> bool:\n                try:\n                    return float(a) == float(b)\n                except (TypeError, ValueError):\n                    return False\n            todo = {k: v for k, v in values.items()\n                    if not same(have.get(k), v)}\n            if todo and f"gcode_macro {HOOKS_MACRO}_SET" in objs:\n                args = " ".join(f"{k.upper()}={v}" for k, v in todo.items())\n                await kapis.run_gcode(f"{HOOKS_MACRO}_SET {args}")\n            else:\n                for key, value in todo.items():\n                    await kapis.run_gcode(\n                        f"SET_GCODE_VARIABLE MACRO={HOOKS_MACRO} "\n                        f"VARIABLE={key} VALUE={value}")\n'),
     ("pushraker/web/index.html",
      '</body>',
      '<script src="/pushraker-updates/system.js"></script>\n</body>'),
