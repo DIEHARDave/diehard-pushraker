@@ -1,7 +1,7 @@
 {
   "name": "diehard-pushraker",
   "description": "pushraker push notifications (ntfy, Pushover, Telegram, Discord, e-mail ... with snapshots) with DIEHARDave's add-ons: Discord status cards and update notices; settings page at port 82",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "author": "DIEHARDave (pushraker by noon92)",
   "url": "https://github.com/DIEHARDave/diehard-pushraker",
   "requires_os": "1.6",

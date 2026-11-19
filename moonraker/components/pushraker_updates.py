@@ -42,6 +42,12 @@
 # "Klipper restarted" (every later one: RESTART, FIRMWARE_RESTART, a saved
 # config) notices, sent through pushraker's own destinations (push, email,
 # webhook). A Moonraker restart alone sends neither.
+# "Print interrupted": at that same first ready, a print the power cut (or
+# a crash) ended, from the printer's own recovery data (Zmod's
+# klipper_data.json, Kiln's ad5x_resume, the FLSUN T1's save_variables).
+# With AFC: "Filament loaded / unloaded" (outside prints), "Switched to
+# backup spool" (infinite spool) and "Lane ran out" (no backup lane), from
+# AFC's status.
 # GET/POST /server/pushraker_addons/power  their Push and Email choices,
 # and what pushraker prints in the Klipper console after a send ("console":
 # all, failures (the default here) or none)
@@ -126,9 +132,29 @@ ADDON_REPOS = {
 # "Printer on" / "Klipper restarted": the rows, their defaults, and how
 # long after boot a first Klipper ready still counts as the printer coming
 # on (pushraker's power loss check uses the same window)
-POWER_ROWS = ("printer_on", "klipper_restart")
+POWER_ROWS = ("printer_on", "klipper_restart", "power_loss",
+              "afc_filament", "afc_backup", "afc_runout")
 POWER_DEFAULTS = {"printer_on": {"push": True, "email": False},
-                  "klipper_restart": {"push": False, "email": False}}
+                  "klipper_restart": {"push": False, "email": False},
+                  "power_loss": {"push": True, "email": False},
+                  "afc_filament": {"push": True, "email": False},
+                  "afc_backup": {"push": True, "email": False},
+                  "afc_runout": {"push": True, "email": False}}
+POWER_PRIORITY = {"printer_on": "high", "power_loss": "max",
+                  "afc_runout": "high"}
+AFC_ROWS = ("afc_filament", "afc_backup", "afc_runout")
+# Zmod's recovery data: written while printing, removed when a print ends
+ZMOD_RESTORE = "/opt/config/mod_data/klipper_data.json"
+# How each printer's recovery is started (the notice says it)
+RESUME_HOW = {"zmod": "Resume it with ZRESTORE (or the prompt).",
+              "kiln": "Resume it with RESUME_INTERRUPTED CONFIRM=1.",
+              "flsun": "The printer's screen offers to resume it."}
+AFC_LANE_FIELDS = ["status", "runout_lane", "color", "material",
+                   "filament_name", "spool_id", "map", "weight"]
+AFC_INFINITE = "Infinite Runout"
+RE_AFC_RUNOUT = re.compile(
+    r"(?:Runout triggered|Minimum weight threshold reached) for lane "
+    r"(\S+) and runout lane is not setup")
 BOOT_WINDOW = 600.
 # pushraker reads its settings at klippy_ready too: wait this long for it
 PUSH_READY_WAIT = 60.
@@ -184,6 +210,71 @@ def normalize_power(saved: Any) -> Dict[str, Dict[str, bool]]:
                     if k in row:
                         out[rid][k] = bool(row[k])
     return out
+
+
+def zmod_interrupted(path: str = ZMOD_RESTORE) -> Optional[Dict[str, Any]]:
+    """Zmod's recovery data, if a print was cut off: file and Z."""
+    try:
+        with open(path) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    fp = d.get("file_params") or {}
+    pos = d.get("position") or []
+    try:
+        z = float(pos[2])
+    except (IndexError, TypeError, ValueError):
+        z = None
+    return {"file": os.path.basename(str(fp.get("file_path") or "")),
+            "z": z, "duration": None, "how": "zmod"}
+
+
+def duration_text(seconds: Any) -> str:
+    try:
+        s = int(float(seconds))
+    except (TypeError, ValueError):
+        return ""
+    h, m = s // 3600, s % 3600 // 60
+    return f"{h} h {m} min" if h else f"{m} min"
+
+
+def interrupted_text(name: str, info: Dict[str, Any]) -> Tuple[str, str]:
+    """Title and text of the "Print interrupted" notice."""
+    what = info.get("file") or "The print"
+    line = f"{what} stopped"
+    if info.get("z") is not None:
+        line += f" at Z {float(info['z']):.2f} mm"
+    took = duration_text(info.get("duration"))
+    if took:
+        line += f" after {took}"
+    line += " (power cut or crash)."
+    how = RESUME_HOW.get(info.get("how") or "", "")
+    body = line + (f"\n{how} Don't move the bed or the toolhead first."
+                   if how else "")
+    return f"🔌 {name}: print interrupted", body
+
+
+def afc_lane_name(obj: str, lane: Dict[str, Any]) -> str:
+    """lane2 (T1): the lane and the tool it maps to."""
+    short = obj.split(" ", 1)[-1]
+    tools = lane.get("map")
+    if isinstance(tools, list):
+        tools = ", ".join(str(t) for t in tools if t)
+    return f"{short} ({tools})" if tools else short
+
+
+def afc_filament(lane: Dict[str, Any]) -> str:
+    """The filament in a lane, and how much is left when AFC knows."""
+    name = str(lane.get("filament_name") or "").strip() or " ".join(
+        str(x) for x in (lane.get("material"), lane.get("color")) if x)
+    try:
+        grams = float(lane.get("weight") or 0)
+    except (TypeError, ValueError):
+        grams = 0
+    left = f"{grams:.0f} g left" if grams > 0 else ""
+    return ", ".join(x for x in (name, left) if x)
 
 
 def power_text(rid: str, name: str,
@@ -652,6 +743,14 @@ class PushrakerUpdates:
         self.console = self.state.get("console") \
             if self.state.get("console") in CONSOLE_MODES else CONSOLE_DEFAULT
         self._seen_ready = False
+        # The printer's power-loss recovery ("zmod", "kiln", "flsun"), found
+        # at klippy_ready; AFC's state as last seen
+        self._pl_source = ""
+        self._afc_on = False
+        self._afc_lanes: Dict[str, Dict[str, Any]] = {}
+        self._afc_current: Optional[str] = None
+        self._afc_msg = ""
+        self._afc_printing = False
         self.server.register_endpoint(
             "/server/pushraker_addons/power", ["GET", "POST"],
             self._ep_power)
@@ -1051,7 +1150,11 @@ class PushrakerUpdates:
             logging.info(f"{LOG} saved from the page: {self.power}, "
                          f"console {self.console}")
         self._hook_console()
+        available = ["printer_on", "klipper_restart"] + \
+            (["power_loss"] if self._pl_source else []) + \
+            (list(AFC_ROWS) if self._afc_on else [])
         return {"rows": self.power, "defaults": normalize_power(None),
+                "available": available,
                 "last": self.state.get("power_last"),
                 "console": self.console, "console_default": CONSOLE_DEFAULT}
 
@@ -1074,6 +1177,7 @@ class PushrakerUpdates:
         self._hook_console()
         first = not self._seen_ready
         self._seen_ready = True
+        self._spawn(self._afc_subscribe())
         if first:
             # Moonraker just started: the printer came on, or only
             # Moonraker restarted (then nothing). Once per boot: the boot
@@ -1088,14 +1192,176 @@ class PushrakerUpdates:
             if bid:
                 self.state["power_boot"] = bid
                 self._save()
-            rid = "printer_on"
-        else:
-            rid = "klipper_restart"
+            self._spawn(self._boot_notices())
+            return
+        if self._row_on("klipper_restart"):
+            self._spawn(self._power_notice("klipper_restart"))
+
+    def _row_on(self, rid: str) -> bool:
         row = self.power.get(rid) or {}
-        if row.get("push") or row.get("email"):
-            self._spawn(self._power_notice(rid))
+        return bool(row.get("push") or row.get("email"))
+
+    async def _boot_notices(self) -> None:
+        """The printer came on: "Printer on", then "Print interrupted"
+        when a print was cut off."""
+        if self._row_on("printer_on"):
+            await self._power_notice("printer_on")
+        info = await self._interrupted()
+        if info is not None and self._row_on("power_loss"):
+            title, body = interrupted_text(self._name(), info)
+            await self._row_notice("power_loss", title, body)
+
+    async def _interrupted(self) -> Optional[Dict[str, Any]]:
+        """The print the last power cut ended, from the printer's own
+        recovery data; None when there is none (or no such data)."""
+        try:
+            kapis = self.server.lookup_component("klippy_apis")
+            objs = await kapis.get_object_list(default=[])
+        except Exception:
+            objs = []
+        try:
+            if "ad5x_resume" in objs:
+                self._pl_source = "kiln"
+                res = await kapis.query_objects({"ad5x_resume": None},
+                                                default={})
+                st = res.get("ad5x_resume") or {}
+                if st.get("available"):
+                    return {"file": st.get("file") or "", "z": st.get("z"),
+                            "duration": None, "how": "kiln"}
+                return None
+            if "power_loss_recover" in objs and "save_variables" in objs:
+                self._pl_source = "flsun"
+                res = await kapis.query_objects({"save_variables": None},
+                                                default={})
+                v = (res.get("save_variables") or {}).get("variables") or {}
+                if v.get("was_interrupted") is True:
+                    return {"file": os.path.basename(
+                                str(v.get("sd_filename") or "")),
+                            "z": v.get("z_pos"),
+                            "duration": v.get("print_duration"),
+                            "how": "flsun"}
+                return None
+        except Exception as e:
+            logging.info(f"{LOG} power loss check: {e}")
+            return None
+        if os.path.isdir(os.path.dirname(ZMOD_RESTORE)):
+            self._pl_source = "zmod"
+            return await self.eventloop.run_in_thread(zmod_interrupted)
+        return None
+
+    # ---- AFC: filament loaded / unloaded, backup spool, lane ran out ----
+
+    async def _afc_subscribe(self) -> None:
+        try:
+            kapis = self.server.lookup_component("klippy_apis")
+            objs = await kapis.get_object_list(default=[])
+        except Exception:
+            return
+        # Which power-loss recovery this printer has (for the page)
+        if "ad5x_resume" in objs:
+            self._pl_source = "kiln"
+        elif "power_loss_recover" in objs and "save_variables" in objs:
+            self._pl_source = "flsun"
+        elif os.path.isdir(os.path.dirname(ZMOD_RESTORE)):
+            self._pl_source = "zmod"
+        lanes = [o for o in objs if o.startswith(("AFC_lane ",
+                                                  "AFC_stepper "))]
+        self._afc_on = "AFC" in objs and bool(lanes)
+        if not self._afc_on:
+            return
+        try:
+            status = await kapis.subscribe_objects(
+                dict({"AFC": ["current_load", "message", "error_state"],
+                      "print_stats": ["state"]},
+                     **{o: AFC_LANE_FIELDS for o in lanes}),
+                self._afc_update, default={})
+        except Exception as e:
+            logging.info(f"{LOG} AFC subscribe failed: {e}")
+            return
+        # What is there now is the starting point: no notices for it
+        self._afc_lanes = {o: dict(status.get(o) or {}) for o in lanes}
+        afc = status.get("AFC") or {}
+        self._afc_current = afc.get("current_load") or None
+        msg = afc.get("message")
+        self._afc_msg = str((msg or {}).get("message") or "") \
+            if isinstance(msg, dict) else str(msg or "")
+        self._afc_printing = (status.get("print_stats") or {}).get(
+            "state") in ("printing", "paused")
+
+    def _afc_lane(self, name: Optional[str]) -> Tuple[str, Dict[str, Any]]:
+        """A lane by its short name (lane1) or object name."""
+        for obj, lane in self._afc_lanes.items():
+            if name and (obj == name or obj.split(" ", 1)[-1] == name):
+                return obj, lane
+        return str(name or ""), {}
+
+    async def _afc_update(self, data: Dict[str, Any],
+                          _eventtime: float = 0.) -> None:
+        if not self._afc_on:
+            return
+        ps = data.get("print_stats") or {}
+        if "state" in ps:
+            self._afc_printing = ps["state"] in ("printing", "paused")
+        # Infinite spool: the backup lane's status says it while AFC
+        # changes over (AFC.current_load is still the lane that ran out)
+        for obj, values in data.items():
+            if obj not in self._afc_lanes or not isinstance(values, dict):
+                continue
+            lane = self._afc_lanes[obj]
+            was = lane.get("status")
+            lane.update(values)
+            if values.get("status") == AFC_INFINITE and was != AFC_INFINITE \
+                    and self._row_on("afc_backup"):
+                eobj, empty = self._afc_lane(self._afc_current)
+                title = f"🔄 {self._name()} switched to backup spool"
+                body = f"{afc_lane_name(eobj, empty) if eobj else 'A lane'}" \
+                    f" ran out. Now printing from " \
+                    f"{afc_lane_name(obj, lane)}"
+                fil = afc_filament(lane)
+                body += f": {fil}." if fil else "."
+                self._spawn(self._row_notice("afc_backup", title, body))
+        afc = data.get("AFC")
+        if not isinstance(afc, dict):
+            return
+        msg = afc.get("message")
+        if msg is not None:
+            text = str((msg or {}).get("message") or "") \
+                if isinstance(msg, dict) else str(msg or "")
+            if text and text != self._afc_msg:
+                m = RE_AFC_RUNOUT.search(text)
+                if m and self._row_on("afc_runout"):
+                    obj, lane = self._afc_lane(m.group(1))
+                    title = f"🧵 {self._name()}: " \
+                        f"{obj.split(' ', 1)[-1] or 'a lane'} ran out"
+                    fil = afc_filament(lane)
+                    body = (f"{afc_lane_name(obj, lane)}: {fil}\n"
+                            if fil else "") + \
+                        "No backup lane is set up, so the print is " \
+                        "paused. Load the next spool and resume."
+                    self._spawn(self._row_notice("afc_runout", title, body))
+            self._afc_msg = text
+        if "current_load" in afc:
+            new = afc.get("current_load") or None
+            old, self._afc_current = self._afc_current, new
+            # During a print every tool change loads and unloads: only
+            # what is done by hand counts (like pushraker's own row)
+            if new != old and not self._afc_printing and \
+                    self._row_on("afc_filament"):
+                if new:
+                    obj, lane = self._afc_lane(new)
+                    title = f"🧵 {self._name()} filament loaded"
+                else:
+                    obj, lane = self._afc_lane(old)
+                    title = f"🧵 {self._name()} filament unloaded"
+                fil = afc_filament(lane)
+                body = afc_lane_name(obj, lane) + (f": {fil}" if fil else "")
+                self._spawn(self._row_notice("afc_filament", title, body))
 
     async def _power_notice(self, rid: str) -> bool:
+        title, body = power_text(rid, self._name(), uptime())
+        return await self._row_notice(rid, title, body)
+
+    async def _row_notice(self, rid: str, title: str, body: str) -> bool:
         push = self._push()
         deadline = time.monotonic() + PUSH_READY_WAIT
         while time.monotonic() < deadline and (
@@ -1114,7 +1380,6 @@ class PushrakerUpdates:
         if not dests:
             logging.info(f"{LOG} {rid}: no destination is on")
             return False
-        title, body = power_text(rid, self._name(), uptime())
         # pushraker sends it (its queues, network wait, retries, Discord
         # cards): the row is in its table for this one send
         key = POWER_KEY.format(rid)
@@ -1142,7 +1407,7 @@ class PushrakerUpdates:
                                          SEND_CONNECT_TIMEOUT)
         s, env = push.settings, push.env
         row = self.power[rid]
-        prio = "high" if rid == "printer_on" else "default"
+        prio = POWER_PRIORITY.get(rid, "default")
         urls: List[Tuple[str, bool]] = []
         if row["push"] and cfgmod.push_configured(s):
             urls.append((cfgmod.row_url(s, rid, prio, env), False))

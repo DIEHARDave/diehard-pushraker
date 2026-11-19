@@ -136,8 +136,26 @@ after a send. *Sent and failed* is pushraker's own behavior. *Only failures*
 (the default here) drops the "Sent notification …" and "Waiting … for a
 network" lines and keeps the "!! Failed …" ones. *Nothing* prints none.
 
-If Klipper can't get ready (an MCU error or a shutdown at boot), neither
-row is sent. pushraker's own *Klipper shutdown* row covers that. The
+- **🔌 Print interrupted** (Push on by default, highest priority): at that
+  same first ready after boot, a print the power cut (or a crash) ended. It
+  names the file, the Z height and how to resume it. It reads the printer's
+  own recovery data: Zmod's `mod_data/klipper_data.json` (written while
+  printing, removed when a print ends), Kiln OS's `ad5x_resume`, and the
+  FLSUN T1's `was_interrupted` saved variable. The row shows only on
+  printers that have one of these.
+
+**AFC** (same section, shown when AFC is installed), from AFC's own status,
+so it works with any AFC unit:
+
+- **🧵 Filament loaded / unloaded**: a lane loaded to or unloaded from the
+  toolhead by hand. Tool changes during a print don't count.
+- **🔄 Switched to backup spool**: a lane ran out and AFC went on with its
+  runout lane (infinite spool).
+- **🧵 Lane ran out** (high priority): a lane ran out with no runout lane
+  set, so AFC paused the print.
+
+If Klipper can't get ready (an MCU error or a shutdown at boot), none of the
+Power rows is sent. pushraker's own *Klipper shutdown* row covers that. The
 choices are kept in `printer_data/.pushraker_updates.json`
 (`GET/POST /server/pushraker_addons/power`).
 

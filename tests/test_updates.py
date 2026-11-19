@@ -811,10 +811,12 @@ if tornado is not None:
     srv.stop()
 
 # ---- Printer on / Klipper restarted ---------------------------------------
-check(pu.normalize_power(None) == {"printer_on": {"push": True, "email": False},
-                                   "klipper_restart": {"push": False,
-                                                       "email": False}},
-      "power defaults: Printer on push, Klipper restarted off")
+pd = pu.normalize_power(None)
+check(pd["printer_on"] == {"push": True, "email": False} and
+      pd["klipper_restart"] == {"push": False, "email": False} and
+      all(pd[r]["push"] for r in ("power_loss", "afc_filament", "afc_backup",
+                                  "afc_runout")),
+      "power defaults: Klipper restarted off, the others push")
 check(pu.normalize_power({"klipper_restart": {"push": 1, "junk": 1},
                           "nope": {"push": True}})["klipper_restart"]
       == {"push": True, "email": False}, "power: saved over defaults, junk dropped")
@@ -836,9 +838,12 @@ check(got["rows"] == pu.normalize_power(None) and got["last"] is None,
       "power GET: defaults")
 got = run(pep(Req("POST", {"klipper_restart": {"push": True, "email": True},
                            "printer_on": {"email": True}, "junk": 1})))
-check(got["rows"] == {"printer_on": {"push": True, "email": True},
-                      "klipper_restart": {"push": True, "email": True}},
+check(got["rows"]["printer_on"] == {"push": True, "email": True} and
+      got["rows"]["klipper_restart"] == {"push": True, "email": True} and
+      got["rows"]["power_loss"] == {"push": True, "email": False},
       "power POST: merged per row")
+check(got["available"] == ["printer_on", "klipper_restart"],
+      "no recovery data or AFC seen: only the two power rows offered")
 run(pep(Req("POST", {"printer_on": {"push": False, "email": False}})))
 run(comp10.close())
 comp11, server11, _, _ = make({}, {}, data=data10)
@@ -907,6 +912,160 @@ run(settle())
 check(sent_rows == ["printer_on", "printer_on"], "the next boot: Printer on")
 run(c.close())
 pu.uptime, pu.boot_id = real_uptime, real_boot
+
+# ---- Print interrupted ----------------------------------------------------
+zf = os.path.join(tempfile.mkdtemp(), "klipper_data.json")
+json.dump({"position": [94.5, 69.7, 3, 1785.9], "file_params": {
+    "file_position": 2474032,
+    "file_path": "/usr/data/gcodes/3mf_print/Clicker_PLA.gcode"}},
+    open(zf, "w"))
+zi = pu.zmod_interrupted(zf)
+check(zi == {"file": "Clicker_PLA.gcode", "z": 3.0, "duration": None,
+             "how": "zmod"}, f"Zmod recovery data read: {zi}")
+check(pu.zmod_interrupted(zf + ".gone") is None, "no Zmod file: nothing")
+t, b = pu.interrupted_text("AD5X-1", zi)
+check(t == "🔌 AD5X-1: print interrupted" and
+      b.startswith("Clicker_PLA.gcode stopped at Z 3.00 mm (power cut or "
+                   "crash).\nResume it with ZRESTORE"), f"Zmod text: {b}")
+t, b = pu.interrupted_text("T1", {"file": "cat.gcode", "z": 35.1,
+                                   "duration": 3725., "how": "flsun"})
+check("after 1 h 2 min" in b and "screen offers" in b, f"T1 text: {b}")
+
+
+class Kapis:
+    def __init__(self, objs, status):
+        self.objs, self.status, self.subs = objs, status, []
+
+    async def get_object_list(self, default=None):
+        return self.objs
+
+    async def query_objects(self, q, default=None):
+        return {k: self.status.get(k, {}) for k in q}
+
+    async def subscribe_objects(self, q, cb, default=None):
+        self.subs.append((q, cb))
+        return {k: self.status.get(k, {}) for k in q}
+
+
+for objs, st, want, src in (
+        (["ad5x_resume"], {"ad5x_resume": {"available": True, "file": "a.gcode",
+                                           "z": 12.4}}, "a.gcode", "kiln"),
+        (["ad5x_resume"], {"ad5x_resume": {"available": False}}, None, "kiln"),
+        (["power_loss_recover", "save_variables"], {"save_variables": {
+            "variables": {"was_interrupted": True,
+                          "sd_filename": "/home/pi/printer_data/gcodes/c.gcode",
+                          "z_pos": 35.1, "print_duration": 600}}}, "c.gcode",
+         "flsun"),
+        (["power_loss_recover", "save_variables"], {"save_variables": {
+            "variables": {"was_interrupted": False}}}, None, "flsun")):
+    c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
+    sv.comps["klippy_apis"] = Kapis(objs, st)
+    got = run(c._interrupted())
+    check((got or {}).get("file") == want and c._pl_source == src,
+          f"{src} recovery: {want or 'nothing'}")
+    run(c.close())
+
+# The boot: Printer on, then Print interrupted
+sent_rows2 = []
+c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
+sv.comps["klippy_apis"] = Kapis(["ad5x_resume"], {"ad5x_resume": {
+    "available": True, "file": "a.gcode", "z": 1.0}})
+
+
+async def fake_power(rid):
+    sent_rows2.append(rid)
+    return True
+
+
+async def fake_row(rid, title, body):
+    sent_rows2.append((rid, title, body))
+    return True
+c._power_notice, c._row_notice = fake_power, fake_row
+run(c._boot_notices())
+check(sent_rows2[0] == "printer_on" and sent_rows2[1][0] == "power_loss" and
+      "a.gcode stopped at Z 1.00 mm" in sent_rows2[1][2] and
+      "RESUME_INTERRUPTED CONFIRM=1" in sent_rows2[1][2],
+      f"boot: Printer on, then Print interrupted: {sent_rows2}")
+c.power["power_loss"] = {"push": False, "email": False}
+sent_rows2.clear()
+run(c._boot_notices())
+check(sent_rows2 == ["printer_on"], "Print interrupted off: only Printer on")
+run(c.close())
+
+# ---- AFC --------------------------------------------------------------------
+afc_status = {
+    "AFC": {"current_load": "lane4", "message": {"message": "", "type": ""},
+            "error_state": False},
+    "print_stats": {"state": "standby"},
+    "AFC_lane lane1": {"status": "Loaded", "map": ["T0"], "runout_lane": "lane3",
+                       "filament_name": "PLA Basic Black", "weight": 820.4},
+    "AFC_lane lane3": {"status": "Loaded", "map": ["T2"], "material": "PLA",
+                       "color": "#FF0000", "weight": 0},
+    "AFC_lane lane4": {"status": "Tooled", "map": ["T3"],
+                       "filament_name": "PLA+ 2.0 Lavender Purple"}}
+c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
+kap = Kapis(["AFC", "AFC_lane lane1", "AFC_lane lane3", "AFC_lane lane4",
+             "print_stats"], afc_status)
+sv.comps["klippy_apis"] = kap
+afc_sent = []
+
+
+async def afc_row(rid, title, body):
+    afc_sent.append((rid, title, body))
+    return True
+c._row_notice = afc_row
+run(c._afc_subscribe())
+run(settle())
+check(c._afc_on and kap.subs and "AFC_lane lane1" in kap.subs[0][0] and
+      not afc_sent and c._afc_current == "lane4",
+      "AFC: subscribed, the current state sends nothing")
+got = run(sv.endpoints["/server/pushraker_addons/power"](Req("GET")))
+check(got["available"][-3:] == ["afc_filament", "afc_backup", "afc_runout"],
+      "AFC rows offered when AFC is there")
+up = c._afc_update
+run(up({"AFC": {"current_load": None}}))
+run(up({"AFC": {"current_load": "lane1"}}))
+run(settle())
+check([a[1] for a in afc_sent] == ["🧵 AD5X-2 filament unloaded",
+                                   "🧵 AD5X-2 filament loaded"] and
+      afc_sent[0][2] == "lane4 (T3): PLA+ 2.0 Lavender Purple" and
+      afc_sent[1][2] == "lane1 (T0): PLA Basic Black, 820 g left",
+      f"loaded / unloaded by hand: {afc_sent}")
+afc_sent.clear()
+run(up({"print_stats": {"state": "printing"}}))
+run(up({"AFC": {"current_load": None}}))
+run(up({"AFC": {"current_load": "lane3"}}))
+run(up({"AFC": {"current_load": "lane1"}}))
+run(settle())
+check(afc_sent == [], "tool changes during a print: nothing")
+run(up({"AFC_lane lane3": {"status": "Infinite Runout"}}))
+run(up({"AFC_lane lane3": {"status": "Infinite Runout"}}))
+run(settle())
+check(len(afc_sent) == 1 and afc_sent[0][0] == "afc_backup" and
+      afc_sent[0][2] == "lane1 (T0) ran out. Now printing from lane3 (T2): "
+      "PLA #FF0000.", f"backup spool, once: {afc_sent}")
+afc_sent.clear()
+msg = ("Runout triggered for lane lane1 and runout lane is not setup to "
+       "switch to another lane.\nPlease manually load next spool into "
+       "toolhead and then hit resume to continue.")
+run(up({"AFC": {"message": {"message": msg, "type": "error"}}}))
+run(up({"AFC": {"message": {"message": msg, "type": "error"}}}))
+run(up({"AFC": {"message": {"message": "Something else", "type": "error"}}}))
+run(settle())
+check(len(afc_sent) == 1 and afc_sent[0][1] == "🧵 AD5X-2: lane1 ran out" and
+      "No backup lane" in afc_sent[0][2], f"lane ran out, once: {afc_sent}")
+afc_sent.clear()
+c.power["afc_filament"] = {"push": False, "email": False}
+run(up({"print_stats": {"state": "complete"}}))
+run(up({"AFC": {"current_load": None}}))
+run(settle())
+check(afc_sent == [], "loaded / unloaded off: nothing")
+run(c.close())
+c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
+sv.comps["klippy_apis"] = Kapis(["print_stats"], {})
+run(c._afc_subscribe())
+check(not c._afc_on, "no AFC: no AFC rows")
+run(c.close())
 
 # The console: pushraker's lines after a send, filtered
 check([pu.console_shows(m, l) for m in pu.CONSOLE_MODES

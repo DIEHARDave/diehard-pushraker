@@ -9,7 +9,9 @@
 // table (all from moonraker/components/pushraker_updates.py):
 //   System: the software update notices, on or off in the Push column,
 //     their schedule under Edit
-//   Power: "Printer on" and "Klipper restarted", Push and Email
+//   Power: "Printer on", "Klipper restarted", "Print interrupted"
+//   AFC: filament loaded / unloaded, backup spool, lane ran out
+//   (rows the printer can't produce are left out: the answer's "available")
 //   Console: what pushraker prints in the Klipper console after a send
 // Save & Apply saves it too; Discard changes puts it back.
 //
@@ -30,8 +32,13 @@
     let data = null;      // the last GET (or POST) answer: update notices
     let power = null;     // the same for the power rows
     let open = false;     // Edit panel shown
-    const POWER = [["printer_on", "🟢", "Printer on", "The first time Klipper is ready after the printer boots"],
-                   ["klipper_restart", "🔄", "Klipper restarted", "RESTART, FIRMWARE_RESTART, saving the config"]];
+    const POWER = [["printer_on", "🟢", "Printer on", "The first time Klipper is ready after the printer boots", "Power"],
+                   ["klipper_restart", "🔄", "Klipper restarted", "RESTART, FIRMWARE_RESTART, saving the config", "Power"],
+                   ["power_loss", "🔌", "Print interrupted", "At boot: a print the power cut (or a crash) ended, from the printer's recovery data", "Power"],
+                   ["afc_filament", "🧵", "Filament loaded / unloaded", "A lane loaded to or unloaded from the toolhead, outside prints", "AFC"],
+                   ["afc_backup", "🔄", "Switched to backup spool", "A lane ran out and AFC went on with its runout lane", "AFC"],
+                   ["afc_runout", "🧵", "Lane ran out", "A lane ran out with no runout lane set: the print pauses", "AFC"]];
+    const shown = () => POWER.filter(([rid]) => !power.available || power.available.includes(rid));
     const CONSOLE = [["all", "Sent and failed"], ["failures", "Only failures"], ["none", "Nothing"]];
     const currentConsole = () => { const c = $("dp-console"); return c ? c.value : power && power.console; };
 
@@ -209,9 +216,12 @@
         const lastName = power.last && (POWER.find(r => r[0] === power.last.row) || [])[2];
         const last = power.last && power.last.at
             ? `<span class="nt-sub">Last sent ${esc(when(power.last.at))}: ${esc(lastName || power.last.row)}${power.last.ok ? "" : " (not delivered)"}</span>` : "";
-        return `<tr class="nt-group dp-sub"><td colspan="4">Power</td></tr>` + POWER.map(([rid, icon, name, sub], i) => {
+        let group = "";
+        return shown().map(([rid, icon, name, sub, g], i) => {
             const v = (keep || {})[rid] || power.rows[rid];
-            return `<tr class="nt-crow" data-dp-prow="${rid}">
+            const head = g !== group ? `<tr class="nt-group dp-sub"><td colspan="4">${esc(g)}</td></tr>` : "";
+            group = g;
+            return head + `<tr class="nt-crow" data-dp-prow="${rid}">
               <td><span class="nt-icon">${icon}</span><span class="nt-name">${esc(name)}</span>
                 <span class="nt-sub">${esc(sub)}</span>${i === 0 ? last : ""}</td>
               <td class="nt-c nt-col-push"><input type="checkbox" data-dp-power="${rid}"${v.push ? " checked" : ""}></td>
