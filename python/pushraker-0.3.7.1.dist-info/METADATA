@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: pushraker
-Version: 0.3.6
+Version: 0.3.7.1
 Summary: Push notifications for Klipper printers: a Moonraker component with pictures, sent through Apprise (ntfy, Pushover, Telegram, Discord, webhooks, email)
 Author: noon92
 License-Expression: GPL-3.0-or-later
