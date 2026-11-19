@@ -124,7 +124,10 @@ done
 # An update changes the code, but Moonraker only restarts this service; it
 # loads the new code when restarted.
 STAMP="${HOME_DIR}/printer_data/.diehard_pushraker_code"
-sum=$( (cd "${REPO_DIR}/moonraker/components" && cat pushraker_cards.py pushraker_updates.py; ls "$PKG") | sha256sum | cut -d' ' -f1)
+# pushraker's own code counts too: a fix in python/pushraker (the vendor.py
+# patches) changes no file name there
+sum=$( (cd "${REPO_DIR}/moonraker/components" && cat pushraker_cards.py pushraker_updates.py; ls "$PKG"
+        find "${PKG}/pushraker" -type f -name '*.py' | sort | xargs cat) | sha256sum | cut -d' ' -f1)
 if [ "$(cat "$STAMP" 2> /dev/null)" != "$sum" ]; then
     restart_moonraker=1
 fi
