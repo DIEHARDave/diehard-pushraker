@@ -10,6 +10,7 @@
 //   System: the software update notices, on or off in the Push column,
 //     their schedule under Edit
 //   Power: "Printer on" and "Klipper restarted", Push and Email
+//   Console: what pushraker prints in the Klipper console after a send
 // Save & Apply saves it too; Discard changes puts it back.
 //
 // Talks to GET/POST /server/pushraker_updates/settings,
@@ -31,6 +32,8 @@
     let open = false;     // Edit panel shown
     const POWER = [["printer_on", "🟢", "Printer on", "The first time Klipper is ready after the printer boots"],
                    ["klipper_restart", "🔄", "Klipper restarted", "RESTART, FIRMWARE_RESTART, saving the config"]];
+    const CONSOLE = [["all", "Sent and failed"], ["failures", "Only failures"], ["none", "Nothing"]];
+    const currentConsole = () => { const c = $("dp-console"); return c ? c.value : power && power.console; };
 
     async function api(path, method, body) {
         const headers = body ? { "Content-Type": "application/json" } : {};
@@ -104,7 +107,7 @@
     const powerDirty = () => {
         if (!power) return false;
         const cur = currentPower();
-        return POWER.some(([rid]) => powerChanged(cur, rid));
+        return POWER.some(([rid]) => powerChanged(cur, rid)) || currentConsole() !== power.console;
     };
 
     function markDirty() {
@@ -118,6 +121,8 @@
                 const r = document.querySelector(`[data-dp-prow="${rid}"]`);
                 if (r) r.classList.toggle("nt-chg", powerChanged(cur, rid));
             });
+            const c = $("dp-console-row");
+            if (c) c.classList.toggle("nt-chg", currentConsole() !== power.console);
         }
     }
 
@@ -185,6 +190,20 @@
         return html;
     }
 
+    function consoleRows(keep) {
+        if (!power || !power.console) return "";
+        const v = keep || power.console;
+        return `<tr class="nt-group dp-sub"><td colspan="4">Console</td></tr>
+            <tr class="nt-crow" id="dp-console-row">
+              <td><span class="nt-icon">🖥️</span><span class="nt-name">Klipper console</span>
+                <span class="nt-sub">What pushraker prints after a notification is sent</span></td>
+              <td class="nt-c nt-col-push"><span class="nt-na">–</span></td>
+              <td class="nt-c nt-col-email"><span class="nt-na">–</span></td>
+              <td class="nt-data"><select class="nt-input" id="dp-console">${CONSOLE.map(([k, n]) =>
+                  `<option value="${k}"${k === v ? " selected" : ""}>${n}</option>`).join("")}</select></td>
+            </tr>`;
+    }
+
     function powerRows(keep) {
         if (!power) return "";
         const lastName = power.last && (POWER.find(r => r[0] === power.last.row) || [])[2];
@@ -222,8 +241,9 @@
         }
         // Ticks not saved yet survive a redraw (Edit / Close)
         const keepPower = power && body.querySelector("[data-dp-power]") ? currentPower() : null;
+        const keepConsole = $("dp-console") ? $("dp-console").value : null;
         body.innerHTML = `<tr class="nt-group dp-head"><td colspan="4">DIEHARDave's plugins<a href="https://github.com/DIEHARDave/diehard-pushraker" target="_blank" rel="noopener">diehard-pushraker ↗</a></td></tr>`
-            + systemRows() + powerRows(keepPower);
+            + systemRows() + powerRows(keepPower) + consoleRows(keepConsole);
         // After the page's own change marking, which clears every mark in
         // the table (ours too) on each change
         const later = () => setTimeout(markDirty, 0);
@@ -274,7 +294,8 @@
     async function savePower() {
         if (!powerDirty()) return;
         try {
-            power = await api("/server/pushraker_addons/power", "POST", currentPower());
+            power = await api("/server/pushraker_addons/power", "POST",
+                              Object.assign(currentPower(), { console: currentConsole() }));
         } catch (e) {
             const r = document.querySelector("[data-dp-prow]");
             const sub = r && r.querySelector(".nt-sub");

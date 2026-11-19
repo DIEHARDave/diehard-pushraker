@@ -42,7 +42,9 @@
 # "Klipper restarted" (every later one: RESTART, FIRMWARE_RESTART, a saved
 # config) notices, sent through pushraker's own destinations (push, email,
 # webhook). A Moonraker restart alone sends neither.
-# GET/POST /server/pushraker_addons/power  their Push and Email choices
+# GET/POST /server/pushraker_addons/power  their Push and Email choices,
+# and what pushraker prints in the Klipper console after a send ("console":
+# all, failures (the default here) or none)
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
@@ -136,6 +138,22 @@ APPRISE_CHANNELS = {"ntfys": "ntfy", "pover": "pushover", "gotifys": "gotify",
                     "tgram": "telegram", "discordhook": "discord",
                     "discorddm": "discord", "json": "webhook",
                     "jsons": "webhook"}
+
+
+# What pushraker prints in the Klipper console after a send: "Sent
+# notification ...", "Waiting up to N minutes ..." and "!! Failed ..."
+# (every such line goes through its _console). failures: only the "!!"
+# lines.
+CONSOLE_MODES = ("all", "failures", "none")
+CONSOLE_DEFAULT = "failures"
+
+
+def console_shows(mode: str, line: str) -> bool:
+    if mode == "all":
+        return True
+    if mode == "failures":
+        return str(line).startswith("!!")
+    return False
 
 
 def boot_id() -> str:
@@ -631,6 +649,8 @@ class PushrakerUpdates:
             "pushraker_check_updates", self._remote_check)
         # "Printer on" / "Klipper restarted" (DIEHARDave's plugins)
         self.power = normalize_power(self.state.get("power"))
+        self.console = self.state.get("console") \
+            if self.state.get("console") in CONSOLE_MODES else CONSOLE_DEFAULT
         self._seen_ready = False
         self.server.register_endpoint(
             "/server/pushraker_addons/power", ["GET", "POST"],
@@ -663,6 +683,7 @@ class PushrakerUpdates:
 
     async def component_init(self) -> None:
         self._save()
+        self._hook_console()
         # Mainsail's sidebar link, or (sidebar_link: False) none. Mainsail
         # reads .theme from Moonraker's "config" root, which isn't always
         # where moonraker.conf is (Kiln OS: /run/moonraker)
@@ -1022,14 +1043,35 @@ class PushrakerUpdates:
                 rid: dict(row, **(args[rid] if isinstance(args.get(rid),
                                                           dict) else {}))
                 for rid, row in self.power.items()})
+            if args.get("console") in CONSOLE_MODES:
+                self.console = args["console"]
+                self.state["console"] = self.console
             self.state["power"] = self.power
             self._save()
-            logging.info(f"{LOG} power notices saved from the page: "
-                         f"{self.power}")
+            logging.info(f"{LOG} saved from the page: {self.power}, "
+                         f"console {self.console}")
+        self._hook_console()
         return {"rows": self.power, "defaults": normalize_power(None),
-                "last": self.state.get("power_last")}
+                "last": self.state.get("power_last"),
+                "console": self.console, "console_default": CONSOLE_DEFAULT}
+
+    def _hook_console(self) -> None:
+        """pushraker's console lines after a send, filtered by the console
+        setting (its _console, wrapped once; pushraker's files unchanged)."""
+        push = self._push()
+        if push is None or getattr(push, "_diehard_console", False) or \
+                not callable(getattr(push, "_console", None)):
+            return
+        orig = push._console
+
+        def console(line: str) -> None:
+            if console_shows(self.console, line):
+                orig(line)
+        push._console = console
+        push._diehard_console = True
 
     async def _on_klippy_ready(self) -> None:
+        self._hook_console()
         first = not self._seen_ready
         self._seen_ready = True
         if first:

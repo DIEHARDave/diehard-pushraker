@@ -908,6 +908,46 @@ check(sent_rows == ["printer_on", "printer_on"], "the next boot: Printer on")
 run(c.close())
 pu.uptime, pu.boot_id = real_uptime, real_boot
 
+# The console: pushraker's lines after a send, filtered
+check([pu.console_shows(m, l) for m in pu.CONSOLE_MODES
+       for l in ('Sent notification "x" to ntfy', '!! Failed to send')] ==
+      [True, True, False, True, False, False],
+      "console: all / only failures / nothing")
+check(comp11.console == "failures", "console default: only failures")
+
+
+class PushConsole:
+    def __init__(self):
+        self.lines = []
+
+    def _console(self, line):
+        self.lines.append(line)
+
+
+c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
+pc = PushConsole()
+sv.comps["pushraker"] = pc
+c._hook_console()
+c._hook_console()
+pc._console('Sent notification "a" to Discord')
+pc._console('!! Failed to send notification "a" to ntfy (timeout), attempt 3/3')
+check(pc.lines == ['!! Failed to send notification "a" to ntfy (timeout), '
+                   'attempt 3/3'], f"wrapped once, failures only: {pc.lines}")
+got = run(sv.endpoints["/server/pushraker_addons/power"](
+    Req("POST", {"console": "all"})))
+pc._console("Sent notification \"b\" to Discord")
+check(got["console"] == "all" and len(pc.lines) == 2,
+      "console all: sent lines show again, at once")
+run(sv.endpoints["/server/pushraker_addons/power"](
+    Req("POST", {"console": "loud"})))
+check(c.console == "all", "an unknown console mode is ignored")
+run(sv.endpoints["/server/pushraker_addons/power"](
+    Req("POST", {"console": "none"})))
+pc._console("!! Failed")
+check(len(pc.lines) == 2 and c.state["console"] == "none",
+      "console nothing: failures hidden too; saved")
+run(c.close())
+
 # The send: through pushraker's _send, with the row only for that send
 
 

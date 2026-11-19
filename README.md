@@ -131,6 +131,11 @@ notice sent before Wi-Fi is up waits for the network.
 - **🔄 Klipper restarted** (off by default): every later Klipper ready,
   such as `RESTART`, `FIRMWARE_RESTART` or saving the config.
 
+**Console** (same section): what pushraker prints in the Klipper console
+after a send. *Sent and failed* is pushraker's own behavior. *Only failures*
+(the default here) drops the "Sent notification …" and "Waiting … for a
+network" lines and keeps the "!! Failed …" ones. *Nothing* prints none.
+
 If Klipper can't get ready (an MCU error or a shutdown at boot), neither
 row is sent. pushraker's own *Klipper shutdown* row covers that. The
 choices are kept in `printer_data/.pushraker_updates.json`
