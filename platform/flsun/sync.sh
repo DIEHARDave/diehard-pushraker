@@ -70,6 +70,16 @@ if as_user "$PY" -c 'import importlib.metadata as m; m.version("pushraker")' 2> 
     as_user "${VENV}/bin/pip" uninstall --disable-pip-version-check -y -q pushraker
     restart_moonraker=1
 fi
+# What that uninstall leaves behind: files pip didn't install (FLSUN_pushraker
+# patched web/index.html, keeping index.html.orig) keep a site-packages/
+# pushraker folder, which Python then takes as an empty namespace package
+# ahead of the plugin's copy ("No module named 'pushraker.component'")
+SITE=$(as_user "$PY" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])' 2> /dev/null)
+if [ -n "$SITE" ] && [ -d "${SITE}/pushraker" ] && [ ! -f "${SITE}/pushraker/__init__.py" ]; then
+    msg "Removing the pip-installed pushraker's leftovers (${SITE}/pushraker)"
+    rm -rf "${SITE}/pushraker"
+    restart_moonraker=1
+fi
 
 msg "Setting up pushraker"
 # pushraker's own installer, from the plugin's copy: the component shim
