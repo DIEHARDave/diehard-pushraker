@@ -303,9 +303,13 @@
 
     async function savePower() {
         if (!powerDirty()) return;
+        // Only what was changed on this page: a page open since before
+        // another one saved doesn't put the older values back
+        const cur = currentPower(), body = {};
+        POWER.forEach(([rid]) => { if (powerChanged(cur, rid)) body[rid] = cur[rid]; });
+        if (currentConsole() !== power.console) body.console = currentConsole();
         try {
-            power = await api("/server/pushraker_addons/power", "POST",
-                              Object.assign(currentPower(), { console: currentConsole() }));
+            power = await api("/server/pushraker_addons/power", "POST", body);
         } catch (e) {
             const r = document.querySelector("[data-dp-prow]");
             const sub = r && r.querySelector(".nt-sub");
