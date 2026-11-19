@@ -70,6 +70,10 @@ ROWS = [
      False),
     ("cancelled", "Print cancelled", "🚫", True, "default", "snapshot",
      "print", False),
+    # After a print ends (complete, cancelled or failed), once the bed is below
+    # bed_cool_temp: the print can come off
+    ("bed_cooled", "Bed cooled", "🛏️", True, "default", "snapshot", "print",
+     False),
     ("macro", "From macros and G-code", "📣", True, "default", "snapshot",
      "print", False),
     ("calibration", "Manual calibrations", "📐", True, "high", "snapshot",
@@ -132,6 +136,7 @@ TEMPLATES = [
      JOB_IMAGES),
     ("complete", "complete", "Print complete", "camera", JOB_IMAGES),
     ("cancelled", "cancelled", "Print cancelled", "camera", JOB_IMAGES),
+    ("bed_cooled", "bed_cooled", "Bed cooled", "render", JOB_IMAGES),
     ("macro", "macro", "From macros and G-code", "camera", JOB_IMAGES),
     ("calibration", "calibration", "Manual calibrations", "camera",
      JOB_IMAGES),
@@ -260,7 +265,8 @@ STRING_FIELDS = ("provider", "server", "topic", "auth", "username",
 # Free text with line breaks (stored with \n escaped)
 SECRET_FIELDS = ("secret", "email_password", "webhook_url")
 INT_FIELDS = ("layers_complete", "email_port", "filament_low_percent",
-              "filament_low_grams", "driver_temp", "report_interval")
+              "filament_low_grams", "driver_temp", "report_interval",
+              "bed_cool_temp")
 BOOL_FIELDS = ("enabled", "push_enabled", "email_enabled", "webhook_enabled",
                "filament_unknown")
 # Settings the form fills in for common providers
@@ -384,6 +390,7 @@ def _defaults(name: str) -> Dict[str, Any]:
         # "" for the printer's default
         "time_left": "",
         "driver_temp": 105,     # °C, X or Y stepper driver (row: driver_hot)
+        "bed_cool_temp": 40,    # °C, the bed after a print (row: bed_cooled)
         "report_interval": 30,  # minutes of print time between status reports
         "email_enabled": False,
         "webhook_enabled": False,
@@ -422,12 +429,22 @@ CUSTOM_SECTION = "pushraker custom "
 
 # Custom notifications: a name (letters, digits, _; it's how G-code fires
 # one: RESPOND PREFIX=notify_custom MSG=<name>), a condition (a Jinja
-# expression, checked every few seconds: sent when it turns true), and a
-# template like the built-in ones
+# expression, evaluated every few seconds: sent when it turns true; or at
+# each layer change, tool change... : sent when true), and a template like
+# the built-in ones
 CUSTOM_MAX = 20
 RX_CUSTOM_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,31}")
+# pushraker.<name> in templates: a built-in notification's or pushraker's
+# own, so not a custom notification's name
+PUSHRAKER_NAMES = ("enabled", "version", "started", "push", "email", "last",
+                   "failed")
 CUSTOM_IMAGES = ("none", "render", "camera")
 CUSTOM_REPEATS = ("change", "job", "job_pause", "minutes")
+# When the condition is evaluated: every few seconds (poll), or at each
+# layer change, tool change, next object (printing by object), excluded
+# object, 1% of progress, console line
+CUSTOM_EVALUATES = ("poll", "layer", "tool", "object", "excluded",
+                    "progress", "console")
 WHEN_MAX = 1000
 CUSTOM_DEFAULT = {
     "enabled": True, "priority": "default", "email": False,
@@ -436,7 +453,7 @@ CUSTOM_DEFAULT = {
     # Empty: the editor shows an example; sent empty, the title stands alone
     "contents": "",
     "image": "camera", "camera": "", "topic": "",
-    "repeat": "change", "repeat_minutes": 10,
+    "repeat": "change", "repeat_minutes": 10, "evaluate": "poll",
 }
 
 
@@ -474,6 +491,11 @@ def clean_custom(items: Any, strict: bool = False) -> List[Dict[str, Any]]:
             if name.lower() in seen:
                 raise ConfigError(f'Two custom notifications are named '
                                   f'"{name}"')
+            if strict and name.lower() in {r[0] for r in ROWS} | set(
+                    PUSHRAKER_NAMES):
+                raise ConfigError(
+                    f'Custom notification "{name}": pushraker.{name} is '
+                    "taken by pushraker; choose another name")
             c["name"] = name
             c["enabled"] = bool(raw.get("enabled", c["enabled"]))
             c["email"] = bool(raw.get("email", c["email"]))
@@ -507,6 +529,10 @@ def clean_custom(items: Any, strict: bool = False) -> List[Dict[str, Any]]:
             if not 1 <= minutes <= 1440:
                 raise ConfigError(f"{name}: repeat every 1 to 1440 minutes")
             c["repeat_minutes"] = minutes
+            evaluate = str(raw.get("evaluate") or "poll")
+            if evaluate not in CUSTOM_EVALUATES:
+                raise ConfigError(f"{name}: no such evaluate")
+            c["evaluate"] = evaluate
             for field, text in (("When", when_template(c["when"])),
                                 ("title", c["title"]),
                                 ("contents", c["contents"])):
@@ -536,6 +562,7 @@ def custom_lines(s: Dict[str, Any]) -> List[str]:
         lines += ["", f"[{CUSTOM_SECTION}{c['name']}]",
                   f"notification: {'on' if c['enabled'] else 'off'}, "
                   f"{c['priority']}, {'email' if c['email'] else 'no_email'}",
+                  f"evaluate: {c['evaluate']}",
                   f"when: {escape_text(c['when'])}",
                   f"title: {escape_text(c['title'])}",
                   f"contents: {escape_text(c['contents'])}",
@@ -566,6 +593,8 @@ def parse_custom(cfg: Any) -> List[Dict[str, Any]]:
         for key in ("image", "camera", "topic"):
             if key in sec:
                 c[key] = sec.get(key).strip()
+        if "evaluate" in sec:
+            c["evaluate"] = sec.get("evaluate").strip().lower()
         repeat = (sec.get("repeat") or "change").strip().lower()
         if repeat.isdigit():
             c["repeat"], c["repeat_minutes"] = "minutes", int(repeat)
@@ -923,6 +952,13 @@ def validate(data: Dict[str, Any], current: Dict[str, Any],
             raise ConfigError("Driver temperature must be a number", "driver_temp")
     if not 40 <= s["driver_temp"] <= 150:
         raise ConfigError("Driver running hot: the temperature must be 40 to 150 °C", "driver_temp")
+    if "bed_cool_temp" in data:
+        try:
+            s["bed_cool_temp"] = int(data["bed_cool_temp"])
+        except (TypeError, ValueError):
+            raise ConfigError("Bed temperature must be a number", "bed_cool_temp")
+    if not 20 <= s["bed_cool_temp"] <= 100:
+        raise ConfigError("Bed cooled: the temperature must be 20 to 100 °C", "bed_cool_temp")
     if "report_interval" in data:
         try:
             s["report_interval"] = int(data["report_interval"])
@@ -1453,8 +1489,9 @@ def webhook_url(s: Dict[str, Any], rid: str, env: Env) -> str:
     return base + ("&" if own else "?") + "&".join(params)
 
 
-def email_url(s: Dict[str, Any]) -> str:
-    """Apprise URL for email (SMTP)."""
+def email_url(s: Dict[str, Any], inline: bool = True) -> str:
+    """Apprise URL for email (SMTP). inline: the image shown in the HTML
+    card (a backup file goes as a plain attachment)."""
     scheme = "mailto" if s["email_security"] == "none" else "mailtos"
     userinfo = ""
     if s["email_username"]:
@@ -1463,11 +1500,91 @@ def email_url(s: Dict[str, Any]) -> str:
     # HTML card (pushraker.email_html) with the image inline; Apprise adds
     # a plain-text version
     params = {"from": s["email_from"], "to": ",".join(recipients(s)),
-              "name": s["name"], "format": "html", "inline": "yes"}
+              "name": s["name"], "format": "html",
+              "inline": "yes" if inline else "no"}
     if s["email_security"] != "none":
         params["mode"] = s["email_security"]
     return (f"{scheme}://{userinfo}{s['email_host']}:{s['email_port']}"
             f"?{query(params)}")
+
+
+PROVIDER_LABELS = {"ntfy": "ntfy", "gotify": "Gotify", "pushover": "Pushover",
+                   "telegram": "Telegram", "discord": "Discord",
+                   "discord_dm": "Discord"}
+# A backup: the settings in a file, without what pushraker.secrets holds
+BACKUP_FORMAT = 1
+# Push services that can carry a backup file, and why the others can't
+BACKUP_PUSH = {"ntfy": "", "telegram": "", "discord": "", "discord_dm": "",
+               "pushover": "Pushover can only send pictures",
+               "gotify": "Gotify can't send files"}
+
+
+def backup(s: Dict[str, Any], version: str, created: str,
+           secrets: bool = False) -> Dict[str, Any]:
+    """The saved settings as a backup: no tokens, passwords or webhook
+    URL (the secrets), nothing about which service they were for.
+    secrets (a download the user asked to have them in): those that are
+    set, apart from the settings, under "secrets"."""
+    out = json.loads(json.dumps(s))
+    for key in SECRET_FIELDS + ("secret_for", "email_password_for"):
+        out.pop(key, None)
+    data = {"pushraker_backup": BACKUP_FORMAT, "version": version,
+            "printer": s.get("name") or "Printer", "created": created,
+            "settings": out}
+    if secrets:
+        data["secrets"] = {k: str(s[k]) for k in SECRET_FIELDS if s.get(k)}
+    return data
+
+
+def backup_name(s: Dict[str, Any], day: str, secrets: bool = False) -> str:
+    name = re.sub(r"[^A-Za-z0-9._-]+", "-", s.get("name") or "Printer")
+    return (f"pushraker-backup-{name.strip('-') or 'Printer'}-{day}"
+            + ("-with-secrets" if secrets else "") + ".json")
+
+
+def backup_secrets(data: Any) -> Dict[str, str]:
+    """The tokens and passwords a backup file was saved with (none in
+    most): each a line of text, as if typed into the page."""
+    found = data.get("secrets") if isinstance(data, dict) else None
+    out = {}
+    for key in SECRET_FIELDS:
+        value = found.get(key) if isinstance(found, dict) else None
+        if isinstance(value, str) and value.strip() and \
+                len(value) <= 2000 and "\n" not in value:
+            out[key] = value.strip()
+    return out
+
+
+def backup_targets(s: Dict[str, Any]) -> Dict[str, Any]:
+    """Where a backup can be sent with the saved settings, even with
+    notifications off: the push service (or why not), and email."""
+    on = dict(s, enabled=True, push_enabled=True, email_enabled=True)
+    label = PROVIDER_LABELS.get(s["provider"], s["provider"])
+    if not push_configured(on):
+        push = "Set up a push service first"
+    else:
+        push = BACKUP_PUSH.get(s["provider"], "This service can't send files")
+    email = "" if on["email_host"] and on["email_from"] else \
+        "Set up email first"
+    return {"push": push, "push_label": label, "email": email,
+            "email_to": (recipients(s) or [""])[0]}
+
+
+def backup_settings(data: Any) -> Dict[str, Any]:
+    """A backup file's settings, checked enough for the page to load
+    them (Save & Apply validates them as any other)."""
+    if not isinstance(data, dict) or "pushraker_backup" not in data:
+        raise ConfigError("Not a pushraker backup")
+    if not isinstance(data.get("settings"), dict):
+        raise ConfigError("The backup has no settings")
+    try:
+        fmt = int(data["pushraker_backup"])
+    except (TypeError, ValueError):
+        raise ConfigError("Not a pushraker backup")
+    if fmt > BACKUP_FORMAT:
+        raise ConfigError("The backup is from a newer pushraker; "
+                          "update this one first")
+    return data["settings"]
 
 
 def available_rows(env: Env) -> List[str]:
@@ -1556,6 +1673,8 @@ def render_options(s: Dict[str, Any], env: Env) -> Dict[str, str]:
         out["filament_change_events"] = s["filament_change_events"]
     if "driver_hot" in rows:
         out["driver_temp"] = str(s["driver_temp"])
+    if "bed_cooled" in rows:
+        out["bed_cool_temp"] = str(s["bed_cool_temp"])
     if "status_report" in rows:
         out["report_interval"] = str(s["report_interval"])
     tz = time_zone(s)
@@ -1794,6 +1913,7 @@ def public_view(s: Dict[str, Any], env: Env, busy: bool,
                       for t in TEMPLATES],
         "title_max": TITLE_MAX, "contents_max": CONTENTS_MAX,
         "custom_default": CUSTOM_DEFAULT, "custom_max": CUSTOM_MAX,
+        "backup": backup_targets(s),
         "priorities": PRIORITIES,
         "providers": PROVIDERS,
         "cameras": {name: {"snapshot": bool(c.get("snapshot")),
