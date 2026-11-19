@@ -951,12 +951,12 @@ for objs, st, want, src in (
         (["ad5x_resume"], {"ad5x_resume": {"available": True, "file": "a.gcode",
                                            "z": 12.4}}, "a.gcode", "kiln"),
         (["ad5x_resume"], {"ad5x_resume": {"available": False}}, None, "kiln"),
-        (["power_loss_recover", "save_variables"], {"save_variables": {
+        (["save_variables"], {"save_variables": {
             "variables": {"was_interrupted": True,
                           "sd_filename": "/home/pi/printer_data/gcodes/c.gcode",
                           "z_pos": 35.1, "print_duration": 600}}}, "c.gcode",
          "flsun"),
-        (["power_loss_recover", "save_variables"], {"save_variables": {
+        (["save_variables"], {"save_variables": {
             "variables": {"was_interrupted": False}}}, None, "flsun")):
     c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
     sv.comps["klippy_apis"] = Kapis(objs, st)
@@ -964,6 +964,12 @@ for objs, st, want, src in (
     check((got or {}).get("file") == want and c._pl_source == src,
           f"{src} recovery: {want or 'nothing'}")
     run(c.close())
+c, sv, _, _ = make({}, {}, data=tempfile.mkdtemp())
+sv.comps["klippy_apis"] = Kapis(["save_variables"], {"save_variables": {
+    "variables": {"total_time": 5}}})
+check(run(c._interrupted()) is None and c._pl_source == "",
+      "save_variables without was_interrupted: no recovery data")
+run(c.close())
 
 # The boot: Printer on, then Print interrupted
 sent_rows2 = []

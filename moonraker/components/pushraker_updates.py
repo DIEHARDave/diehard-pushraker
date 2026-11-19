@@ -1229,11 +1229,16 @@ class PushrakerUpdates:
                     return {"file": st.get("file") or "", "z": st.get("z"),
                             "duration": None, "how": "kiln"}
                 return None
-            if "power_loss_recover" in objs and "save_variables" in objs:
-                self._pl_source = "flsun"
+            if "save_variables" in objs:
                 res = await kapis.query_objects({"save_variables": None},
                                                 default={})
                 v = (res.get("save_variables") or {}).get("variables") or {}
+            else:
+                v = {}
+            # FLSUN's power_loss_recover (no status of its own, so Klipper
+            # doesn't list it) keeps was_interrupted in save_variables
+            if "was_interrupted" in v:
+                self._pl_source = "flsun"
                 if v.get("was_interrupted") is True:
                     return {"file": os.path.basename(
                                 str(v.get("sd_filename") or "")),
@@ -1260,10 +1265,17 @@ class PushrakerUpdates:
         # Which power-loss recovery this printer has (for the page)
         if "ad5x_resume" in objs:
             self._pl_source = "kiln"
-        elif "power_loss_recover" in objs and "save_variables" in objs:
-            self._pl_source = "flsun"
         elif os.path.isdir(os.path.dirname(ZMOD_RESTORE)):
             self._pl_source = "zmod"
+        elif "save_variables" in objs:
+            try:
+                res = await kapis.query_objects({"save_variables": None},
+                                                default={})
+                v = (res.get("save_variables") or {}).get("variables") or {}
+                if "was_interrupted" in v:
+                    self._pl_source = "flsun"
+            except Exception:
+                pass
         lanes = [o for o in objs if o.startswith(("AFC_lane ",
                                                   "AFC_stepper "))]
         self._afc_on = "AFC" in objs and bool(lanes)
