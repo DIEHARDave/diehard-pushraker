@@ -86,6 +86,27 @@
     .nt-enable { display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--item); border-radius: 6px; margin-bottom: 16px; cursor: pointer; color: #fff; font-weight: 500; }
     .nt-enable.nt-sec { font-weight: 600; margin-bottom: 12px; }
     .nt input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; flex: none; }
+    .bk-wrap { margin-top: 16px; }
+    .bk-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .bk-send-wrap { position: relative; }
+    .nt-fill-menu.bk-menu { right: auto; min-width: 260px; top: auto; bottom: calc(100% + 4px); z-index: 20; }
+    .bk-status { font-size: 13px; color: #8bc34a; }
+    .bk-file { font-family: monospace; font-size: 13px; color: #ccc; margin: 4px 0 8px; word-break: break-all; }
+    .bk-list { margin: 0 0 10px 18px; padding: 0; font-size: 14px; line-height: 1.6; }
+    .bk-fit { color: #c9c9c9; }
+    .bk-fit:empty { display: none; }
+    .bk-note { color: var(--muted); font-size: 13px; }
+    .nt-fill-menu.bk-menu button.bk-off { opacity: 0.45; cursor: not-allowed; }
+    .nt-fill-menu.bk-menu button.bk-off:hover { background: none; }
+    .bk-red { color: #ff6b6b; font-weight: 600; }
+    .rs-list { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 12px; }
+    .rs-list label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; font-size: 14px; }
+    .rs-list input { margin-top: 3px; flex: none; }
+    .rs-list small { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
+    .rs-list .rs-all { border-top: 1px solid #444; padding-top: 10px; }
+    .rs-list label.rs-off { opacity: 0.45; cursor: default; }
+    .bk-to { margin: 4px 0 8px; }
+    .bk-to label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
     .nt-section { font-size: 16px; color: #fff; font-weight: 600; margin: 8px 0 10px; }
     .nt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin-bottom: 20px; }
     .nt-field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
@@ -181,6 +202,7 @@
     .nt-ast.blue { color: var(--accent); }
     /* On a phone the Data button is the row's last line instead of a column */
     .nt-data-inline { display: none; }
+    .nt-x-m { display: none; }
     .pr-data .pr-modal-box { max-width: min(1600px, 96vw); border-radius: 12px; padding: 20px 24px; max-height: 94vh; overflow-y: auto; overscroll-behavior: contain; }
     .pr-data, .pr-data .cm-scroller { overscroll-behavior: contain; }
     body.pr-locked { overflow: hidden; }
@@ -200,6 +222,9 @@
     .pr-custom { margin-bottom: 4px; }
     .pr-custom input.pr-code { margin-bottom: 8px; }
     #pr-when { height: auto; min-height: 0; resize: vertical; font-family: monospace; font-size: 13px; margin-bottom: 4px; }
+    .pr-whenlbl { display: flex; align-items: center; gap: 0; }
+    .pr-whenlbl select { background: #2a2a2a; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 1px 4px; font-size: 12px; margin: 0 1px; }
+    .pr-whenlbl .pr-info { margin-left: 6px; }
     .pr-now { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
     .pr-now b { font-weight: 600; }
     .pr-now b.yes { color: var(--success); } .pr-now b.no { color: var(--muted); }
@@ -209,6 +234,8 @@
     .pr-prefixed .pr-prefix { padding: 9px 0 9px 10px; color: var(--muted); font-family: monospace; font-size: 13px; user-select: none; }
     .pr-prefixed input { flex: 1; min-width: 0; border: none; background: transparent; padding: 9px 10px 9px 0; color: var(--text); font-size: 13px; font-family: monospace; }
     .pr-prefixed input:focus { outline: none; }
+    .pr-prefixed.pr-fixed { opacity: 0.6; cursor: default; }
+    .pr-prefixed.pr-fixed input { cursor: default; }
     #pr-cm-when .cm-editor { border: 1px solid #555; border-radius: 6px; font-size: 13px; margin-bottom: 4px; max-height: 160px; }
     #pr-cm-when .cm-scroller { overflow: auto; font-family: monospace; }
     .cm-placeholder { color: var(--muted) !important; font-style: italic; }
@@ -325,6 +352,10 @@
         .card { padding: 10px; }
         .nt-table th.nt-data, .nt-table td.nt-data { display: none; }
         .nt-data-inline { display: block; margin-top: 6px; }
+        /* In the row's last cell a phone shows: a cell can hold it in
+           every browser, a table row can't in older Safari */
+        .nt-table td.nt-x-cell { position: relative; }
+        .nt-x-m { display: block; position: absolute; top: 8px; right: 8px; margin: 0; }
     }
     @media (max-width: 600px) {
         .nt-grid { grid-template-columns: 1fr; }
@@ -617,6 +648,24 @@
                 <label><input type="checkbox" id="nt-fl-unknown"> At print start, warn about a loaded spool that Spoolman shows at 0 g. Turn off if you don't track spool weights in Spoolman</label>
             </div>
         </div>
+
+    </div>
+    <div class="bk-wrap">
+    <div class="nt-section">Backup</div>
+    <div class="bk-row">
+        <span class="nt-fill-wrap bk-send-wrap">
+            <button type="button" class="btn btn-secondary" id="bk-send" aria-haspopup="true" aria-expanded="false">Backup ▴</button>
+            <div class="nt-fill-menu bk-menu" id="bk-menu" role="menu">
+                <button type="button" role="menuitem" data-bk="download">Download</button>
+                <button type="button" role="menuitem" data-bk="push" id="bk-push">Send by push</button>
+                <button type="button" role="menuitem" data-bk="email" id="bk-email">Send by email</button>
+            </div>
+        </span>
+        <button type="button" class="btn btn-secondary" id="bk-restore">Restore…</button>
+        <button type="button" class="btn btn-secondary" id="rs-open">Reset…</button>
+        <input type="file" id="bk-file" accept=".json,application/json" style="display:none">
+        <span class="bk-status" id="bk-status"></span>
+    </div>
     </div>
 </div>
 
@@ -654,20 +703,75 @@
     </div>
 </div>
 
+<div class="pr-modal bk-modal" id="bk-out" role="dialog" aria-labelledby="bk-out-title">
+    <div class="pr-modal-box">
+        <h3 id="bk-out-title">Back up settings</h3>
+        <div class="bk-file" id="bk-out-file"></div>
+        <ul class="bk-list" id="bk-out-list"></ul>
+        <p class="bk-note" id="bk-out-never"></p>
+        <p class="bk-note">The last saved settings: Save &amp; Apply first to include changes on this page.</p>
+        <div class="bk-to" id="bk-to-wrap">
+            <label for="bk-to">Send to</label>
+            <input class="nt-input" id="bk-to" type="email" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="pr-data-err" id="bk-err" style="display:none"></div>
+        <div class="pr-buttons">
+            <button type="button" class="btn btn-save" id="bk-go">Download</button>
+            <button type="button" class="btn btn-secondary" id="bk-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div class="pr-modal bk-modal" id="rs-modal" role="alertdialog" aria-labelledby="rs-title">
+    <div class="pr-modal-box">
+        <h3 id="rs-title">⚠️ Reset settings</h3>
+        <p class="bk-note">Choose what goes back to how pushraker came:</p>
+        <div class="rs-list">
+            <label><input type="checkbox" data-rs="push"> <span><b>Push service settings</b><small>Service, server and topic, login, password, token</small></span></label>
+            <label><input type="checkbox" data-rs="email"> <span><b>Email settings</b><small>Server, sender and addresses, login and password</small></span></label>
+            <label><input type="checkbox" data-rs="webhook"> <span><b>Webhook</b><small>Status, URL</small></span></label>
+            <label><input type="checkbox" data-rs="stock"> <span><b>Stock notifications</b><small>Status, priority, title, content, settings</small></span></label>
+            <label id="rs-custom-wrap"><input type="checkbox" data-rs="custom"> <span><b>Custom notifications</b><small id="rs-custom-sub">All of them are deleted</small></span></label>
+            <label class="rs-all"><input type="checkbox" id="rs-all"> <span><b>All settings</b><small>Everything above and all other settings</small></span></label>
+        </div>
+        <p class="bk-red" id="rs-red" style="display:none"></p>
+        <p class="bk-note">Nothing is saved until you click Save &amp; Apply.</p>
+        <div class="pr-buttons">
+            <button type="button" class="btn btn-discard" id="rs-yes" disabled>Reset</button>
+            <button type="button" class="btn btn-secondary" id="rs-no">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div class="pr-modal bk-modal" id="bk-modal" role="alertdialog" aria-labelledby="bk-title">
+    <div class="pr-modal-box">
+        <h3 id="bk-title">Restore this backup?</h3>
+        <div class="bk-file" id="bk-in-file"></div>
+        <ul class="bk-list" id="bk-in-list"></ul>
+        <ul class="bk-list bk-fit" id="bk-in-fit"></ul>
+        <p class="bk-red" id="bk-in-red"></p>
+        <p class="bk-note" id="bk-in-note"></p>
+        <div class="pr-buttons">
+            <button type="button" class="btn btn-save" id="bk-yes">Restore</button>
+            <button type="button" class="btn btn-secondary" id="bk-no">Cancel</button>
+        </div>
+    </div>
+</div>
+
 <div class="pr-modal pr-data" id="pr-data" role="dialog" aria-labelledby="pr-data-title">
     <div class="pr-modal-box">
         <h3 id="pr-data-title"></h3>
         <div class="pr-data-grid">
             <div class="pr-col-l">
             <div class="pr-ed">
+                <div class="pr-lbl">Name <button type="button" class="nt-i pr-info" id="pr-name-i" data-info="" data-guide="pushraker-values" aria-label="About">?</button></div>
+                <label class="pr-prefixed" id="pr-cname-wrap"><span class="pr-prefix">pushraker.</span><input id="pr-cname" spellcheck="false" autocomplete="off" maxlength="32" placeholder="benchy_detected" aria-label="Name"></label>
                 <div class="pr-custom" id="pr-custom" style="display:none">
-                    <div class="pr-lbl">Name</div>
-                    <label class="pr-prefixed" id="pr-cname-wrap"><span class="pr-prefix">pushraker.</span><input id="pr-cname" spellcheck="false" autocomplete="off" maxlength="32" placeholder="benchy_detected" aria-label="Name"></label>
-                    <div class="pr-lbl">When <button type="button" class="nt-i pr-info" data-info="A condition, checked every 5 seconds: sent when it turns true. Empty: sent only from G-code." data-guide="custom-notifications" aria-label="About">?</button></div>
+                    <div class="pr-lbl pr-whenlbl">When (evaluate&nbsp;<select id="pr-check"><option value="poll">every 5 seconds</option><option value="layer">on each layer change</option><option value="tool">on each tool change</option><option value="object">on each object change</option><option value="excluded">when an object is excluded</option><option value="progress">on each 1% of progress</option><option value="console">on each console message</option></select>) <button type="button" class="nt-i pr-info" id="pr-when-i" data-info="A condition, evaluated every 5 seconds: sent when it turns true. Empty: sent only from G-code." data-guide="custom-notifications" aria-label="About">?</button></div>
                     <textarea class="nt-input" id="pr-when" rows="2" spellcheck="false" autocomplete="off"></textarea>
                     <div id="pr-cm-when"></div>
                     <div class="pr-now" id="pr-now"></div>
-                    <div class="pr-repeat"><span>Send</span><select id="pr-repeat"><option value="change">each time it turns true (at most once a minute)</option><option value="job">once per print job</option><option value="job_pause">once per print job, resets after a pause</option><option value="minutes">at most every # minutes</option></select><span id="pr-rmin-wrap"># = <input type="number" id="pr-rmin" min="1" max="1440" inputmode="numeric"></span></div>
+                    <div class="pr-repeat"><span>Send</span><select id="pr-repeat"><option value="change">each time it turns true (at most 1/min)</option><option value="job">once per print job</option><option value="job_pause">once per print job, resets after a pause</option><option value="minutes">at most every # minutes</option></select><span id="pr-rmin-wrap"># = <input type="number" id="pr-rmin" min="1" max="1440" inputmode="numeric"></span></div>
                 </div>
                 <div class="pr-lbl">Title</div>
                 <textarea class="nt-input pr-code" id="pr-t-title" rows="1" spellcheck="false" autocomplete="off"></textarea>
@@ -716,6 +820,14 @@
             <button type="button" class="btn btn-secondary" id="pr-data-cancel">Cancel</button>
             <button type="button" class="btn btn-remove" id="pr-data-delete" style="display:none">Delete</button>
             <button type="button" class="btn btn-secondary" id="pr-data-reset">Reset</button>
+            <span class="nt-fill-wrap bk-send-wrap">
+                <button type="button" class="btn btn-secondary" id="nx-send" aria-haspopup="true" aria-expanded="false">Export ▴</button>
+                <div class="nt-fill-menu bk-menu" id="nx-menu" role="menu">
+                    <button type="button" role="menuitem" data-nx="download">Download</button>
+                    <button type="button" role="menuitem" data-nx="push" id="nx-push">Send by push</button>
+                    <button type="button" role="menuitem" data-nx="email" id="nx-email">Send by email</button>
+                </div>
+            </span>
         </div>
     </div>
 </div>
@@ -748,6 +860,40 @@
         </div>
     </div>
 </div>
+
+<div class="pr-modal bk-modal" id="nx-out" role="dialog" aria-labelledby="nx-out-title">
+    <div class="pr-modal-box">
+        <h3 id="nx-out-title">Export this notification</h3>
+        <div class="bk-file" id="nx-out-file"></div>
+        <p class="bk-red" id="nx-out-red"></p>
+        <p class="bk-note" id="nx-out-what"></p>
+        <div class="bk-to" id="nx-to-wrap">
+            <label for="nx-to">Send to</label>
+            <input class="nt-input" id="nx-to" type="email" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="pr-data-err" id="nx-err" style="display:none"></div>
+        <div class="pr-buttons">
+            <button type="button" class="btn btn-save" id="nx-go">Download</button>
+            <button type="button" class="btn btn-secondary" id="nx-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div class="pr-modal bk-modal" id="nx-modal" role="alertdialog" aria-labelledby="nx-title">
+    <div class="pr-modal-box">
+        <h3 id="nx-title">Import this notification?</h3>
+        <div class="bk-file" id="nx-in-file"></div>
+        <ul class="bk-list" id="nx-in-list"></ul>
+        <ul class="bk-list bk-fit" id="nx-in-fit"></ul>
+        <p class="bk-red" id="nx-in-red"></p>
+        <p class="bk-note">Nothing is saved until you click Save &amp; Apply.</p>
+        <div class="pr-buttons">
+            <button type="button" class="btn btn-save" id="nx-yes">Import</button>
+            <button type="button" class="btn btn-secondary" id="nx-no">Cancel</button>
+        </div>
+    </div>
+</div>
+<input type="file" id="nx-file" accept=".json,application/json" style="display:none">
 
 <div class="pr-modal" id="pr-modal">
     <div class="pr-modal-box">
@@ -863,14 +1009,17 @@
                     `<option value="${v}"${v === byObject[1] ? ' selected' : ''}>${t}</option>`).join('')}</select><span class="nt-needs" data-needs="${byObject[0]}"${byObject[1] === 'each' ? '' : ' style="display:none"'}>. Needs <b>Exclude objects</b> enabled in the slicer</span></span>`
                 : '';
             const driver = meta.id === 'driver_hot'
-                ? `<span class="nt-sub">X or Y driver over <input class="nt-input nt-layer nt-deg" id="nt-driver-hot" type="number" min="40" max="150" inputmode="numeric" value="${state.driver_temp}"> °C</span>`
+                ? `<span class="nt-sub">X or Y driver over <input class="nt-input nt-layer nt-deg" id="nt-driver-hot" type="number" min="40" max="150" inputmode="numeric" value="${esc(state.driver_temp)}"> °C</span>`
+                : '';
+            const bed = meta.id === 'bed_cooled'
+                ? `<span class="nt-sub">After a print ends, bed below <input class="nt-input nt-layer nt-deg" id="nt-bed-cool" type="number" min="20" max="100" inputmode="numeric" value="${esc(state.bed_cool_temp)}"> °C</span>`
                 : '';
             const marks = meta.id === 'progress'
                 ? `<span class="nt-sub">${(state.meta.progress_marks || [25, 50, 75]).map(m =>
                     `<label style="margin-right:12px; white-space:nowrap"><input type="checkbox" id="nt-pm-${m}"${progressMarks().includes(m) ? ' checked' : ''}> ${m}%</label>`).join('')}</span>`
                 : '';
             const report = meta.id === 'status_report'
-                ? `<span class="nt-sub">Every <input class="nt-input nt-layer nt-deg" id="nt-report-interval" type="number" min="5" max="720" inputmode="numeric" value="${state.report_interval}"> minutes of print time (a pause stops the clock)</span>`
+                ? `<span class="nt-sub">Every <input class="nt-input nt-layer nt-deg" id="nt-report-interval" type="number" min="5" max="720" inputmode="numeric" value="${esc(state.report_interval)}"> minutes of print time (a pause stops the clock)</span>`
                 : '';
             const calib = meta.id === 'calibration'
                 ? '<span class="nt-sub">Notifies when complete, failed or requires user intervention</span>'
@@ -892,7 +1041,7 @@
                     ? '<span class="nt-sub"><code>RESPOND PREFIX=notify MSG="Title || Message || priority"</code> (priority optional)</span>'
                     : '';
             return html + `<tr data-row="${meta.id}">
-                <td><span class="nt-icon">${meta.icon}</span>${layer ? `${layer} <span class="nt-name">layer complete</span>` : `<span class="nt-name">${esc(meta.label)}</span>`}${objects}${marks}${driver}${report}${calib}<span class="nt-sub nt-data-inline"><span class="nt-dim">${editButton(meta.id)}</span></span></td>
+                <td><span class="nt-icon">${meta.icon}</span>${layer ? `${layer} <span class="nt-name">layer complete</span>` : `<span class="nt-name">${esc(meta.label)}</span>`}${objects}${marks}${driver}${bed}${report}${calib}<span class="nt-sub nt-data-inline"><span class="nt-dim">${editButton(meta.id)}</span></span></td>
                 <td class="nt-c nt-col-push"><input type="checkbox" data-enabled="${meta.id}"${row.enabled ? ' checked' : ''}></td>
                 <td class="nt-c nt-col-email"><input type="checkbox" data-email="${meta.id}"${row.email ? ' checked' : ''}></td>
                 <td class="nt-data"><span class="nt-dim">${editButton(meta.id)}</span></td>
@@ -919,27 +1068,33 @@
         updateRowDimming();
     }
 
+    // A custom notification evaluated at an event, in its row
+    const EVALUATE_ROW = { layer: 'At each layer change', tool: 'At each tool change', object: 'At each object',
+        excluded: 'When an object is excluded', progress: 'At each 1%', console: 'At each console line' };
     // Custom notifications' rows, and ➕ Add
     function renderCustomRows() {
         const max = state.meta.custom_max || 20;
         el('nt-crows').innerHTML = `<tr class="nt-group"><td colspan="4">Custom</td></tr>` + customs.map(c => {
             const id = c._id;
+            const at = EVALUATE_ROW[c.evaluate] || '';
             const when = c.when.trim()
-                ? `<span class="nt-sub">When <code>${esc(c.when.length > 70 ? c.when.slice(0, 70) + '…' : c.when)}</code></span>`
-                : '<span class="nt-sub">Sent only from G-code</span>';
+                ? `<span class="nt-sub">${at ? at + ', when' : 'When'} <code>${esc(c.when.length > 70 ? c.when.slice(0, 70) + '…' : c.when)}</code></span>`
+                : `<span class="nt-sub">${at || 'Sent only from G-code'}</span>`;
             return `<tr class="nt-crow" data-crow="${id}">
                 <td><span class="nt-icon">🔔</span><span class="nt-name">${esc(c.name)}</span>${when}<span class="nt-sub nt-data-inline"><span class="nt-dim"><button type="button" class="btn btn-secondary nt-data-btn" data-ctpl="${id}">Edit</button></span></span></td>
                 <td class="nt-c nt-col-push"><input type="checkbox" data-cenabled="${id}"${c.enabled ? ' checked' : ''}></td>
-                <td class="nt-c nt-col-email"><input type="checkbox" data-cemail="${id}"${c.email ? ' checked' : ''}></td>
+                <td class="nt-c nt-col-email nt-x-cell"><button type="button" class="nt-x nt-x-m" data-cdel="${id}" aria-label="Delete">✕</button><input type="checkbox" data-cemail="${id}"${c.email ? ' checked' : ''}></td>
                 <td class="nt-data"><span class="nt-dim"><button type="button" class="btn btn-secondary nt-data-btn" data-ctpl="${id}">Edit</button></span><button type="button" class="nt-x" data-cdel="${id}" aria-label="Delete">✕</button></td>
             </tr>`;
-        }).join('') + (customs.length < max
-            ? '<tr class="nt-add"><td colspan="4"><button type="button" class="btn btn-secondary nt-data-btn" id="nt-add-custom">➕ Add custom notification</button></td></tr>' : '');
+        }).join('') + '<tr class="nt-add"><td colspan="4">' + (customs.length < max
+            ? '<button type="button" class="btn btn-secondary nt-data-btn" id="nt-add-custom">➕ Add custom notification</button> ' : '') +
+            '<button type="button" class="btn btn-secondary nt-data-btn" id="nt-import">Import…</button></td></tr>';
         const rows = el('nt-crows');
         rows.querySelectorAll('[data-cenabled]').forEach(b => { b.onchange = () => { customById(Number(b.dataset.cenabled)).enabled = b.checked; updateRowDimming(); }; });
         rows.querySelectorAll('[data-cemail]').forEach(b => { b.onchange = () => { customById(Number(b.dataset.cemail)).email = b.checked; updateRowDimming(); }; });
         rows.querySelectorAll('[data-ctpl]').forEach(b => { b.onclick = e => { e.preventDefault(); openEditor('custom:' + b.dataset.ctpl); }; });
         rows.querySelectorAll('[data-cdel]').forEach(b => { b.onclick = async e => { e.preventDefault(); await deleteCustom(customById(Number(b.dataset.cdel))); }; });
+        el('nt-import').onclick = e => { e.preventDefault(); nxImport(); };
         if (el('nt-add-custom')) el('nt-add-custom').onclick = e => {
             e.preventDefault();
             draft = Object.assign({ _id: ++customSeq, _saved: null, name: '' }, JSON.parse(JSON.stringify(state.meta.custom_default)));
@@ -988,7 +1143,7 @@
     let savedCustoms = '{}';
     let customSeq = 0;
     let draft = null;       // a new one, until Done
-    const CUSTOM_FIELDS = ['name', 'enabled', 'priority', 'email', 'when', 'title', 'contents', 'image', 'camera', 'topic', 'repeat', 'repeat_minutes'];
+    const CUSTOM_FIELDS = ['name', 'enabled', 'priority', 'email', 'evaluate', 'when', 'title', 'contents', 'image', 'camera', 'topic', 'repeat', 'repeat_minutes'];
     const RX_CUSTOM_NAME = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
     const isCustom = key => String(key).startsWith('custom:');
     const customById = id => customs.find(c => c._id === id) || (draft && draft._id === id ? draft : null);
@@ -1106,7 +1261,7 @@
         // What the tree says each item has (event.* lists)
         let found = null;
         const walk = n => { if (n.expr === list && n.item) found = n.item; (n.children || []).forEach(walk); };
-        const ck = editing ? (isCustom(editing.key) ? 'custom' : editing.key) : '';
+        const ck = editing ? catKey(editing.key) : '';
         (catalogues[ck] || []).forEach(c => (c.children || []).forEach(walk));
         if (found) return found;
         if (LOOP_FIELDS[list]) return LOOP_FIELDS[list];
@@ -1215,10 +1370,38 @@
     const PH_WHEN = '"benchy" or "Benchy" in job.file';
     const PH_CONTENTS = '🚢 Benchy McBenchface{% if job.objects.count >= 2 %}s{% endif %}, coming through! ⛵';
     const phSpan = { when: document.createElement('span'), contents: document.createElement('span') };
+    // When a custom notification's When is evaluated: what the editor says
+    // for each (tooltip, the first Send option, the example)
+    const EVALUATES = {
+        poll: { info: 'A condition, evaluated every 5 seconds: sent when it turns true. Empty: sent only from G-code.',
+                send: 'each time it turns true (at most 1/min)', ph: PH_WHEN },
+        layer: { info: 'Evaluated at each layer change while printing: sent when true. Empty: every layer.', ph: 'job.layer % 5 == 0' },
+        tool: { info: 'Evaluated at each tool change while printing (not before the first layer): sent when true. Empty: every tool change.', ph: 'extruders.current.filament.material == "TPU"' },
+        object: { info: 'Evaluated each time the printer starts the next object, when printing by object: sent when true. Empty: every object.', ph: 'event.object.number == event.object.count' },
+        excluded: { info: 'Evaluated when an object is excluded, from the screen, Mainsail, Fluidd or G-code: sent when true. Empty: every excluded object.', ph: '"Benchy" in event.object.name' },
+        progress: { info: 'Evaluated at each 1% of progress while printing: sent when true. Empty: every 1%.', ph: 'event.progress % 10 == 0' },
+        console: { info: 'Evaluated at each line Klipper writes to the console: sent when true. Empty: every line.', ph: '"Probe" in event.message' }
+    };
+    function showEvaluate() {
+        const v = el('pr-check').value, c = EVALUATES[v] || EVALUATES.poll, poll = v === 'poll';
+        el('pr-when-i').dataset.info = c.info;
+        el('pr-repeat').options[0].textContent = poll ? c.send : 'each time (at most 1/10 s)';
+        phSpan.when.textContent = c.ph;
+        el('pr-when').placeholder = c.ph;
+        if (whenView) whenView.dispatch({});
+    }
+    // The values tree and samples for a custom notification depend on
+    // when its When is evaluated (event.layer at a layer change...)
+    function catKey(key) {
+        if (!isCustom(key)) return key;
+        const ev = editing && editing.evaluate && editing.evaluate !== 'poll' ? '@' + editing.evaluate : '';
+        return 'custom' + ev;
+    }
     function setPlaceholders(custom) {
         phSpan.when.textContent = PH_WHEN;
         phSpan.contents.textContent = custom ? PH_CONTENTS : '';
         el('pr-when').placeholder = PH_WHEN;
+        if (custom) showEvaluate();
         el('pr-data-text').placeholder = custom ? PH_CONTENTS : '';
     }
     function textareaField(t, isContents) {
@@ -1353,6 +1536,7 @@
             if (/^pushraker\./i.test(nm.value)) nm.value = nm.value.replace(/^pushraker\./i, '');
             editing.name = nm.value.trim();
             editing.when = field('when').get();
+            editing.evaluate = el('pr-check').value;
             editing.repeat = el('pr-repeat').value;
             editing.repeat_minutes = Math.max(1, Math.min(1440, parseInt(el('pr-rmin').value, 10) || 10));
             el('pr-rmin-wrap').style.display = editing.repeat === 'minutes' ? '' : 'none';
@@ -1416,7 +1600,7 @@
         try {
             const custom = isCustom(editing.key);
             r = await api('/server/pushraker/preview', 'POST', {
-                key: custom ? 'custom_' + (editing.name || 'my_notification') : editing.key,
+                key: custom ? 'custom_' + (editing.name || 'my_notification') + catKey(editing.key).slice(6) : editing.key,
                 title: editing.title, contents: editing.contents, when: custom ? editing.when : ''
             });
         } catch (e) {
@@ -1544,10 +1728,21 @@
         touched = new Set();
         setPlaceholders(custom);
         el('pr-block-pop').style.display = 'none';
+        // Name: a custom notification's to choose; a built-in one's fixed
+        // (its id: pushraker.complete, and in G-code for a custom one)
+        const meta = custom ? null : tplMeta(editing.key);
+        el('pr-cname').readOnly = !custom;
+        el('pr-cname-wrap').classList.toggle('pr-fixed', !custom);
+        el('pr-name-i').dataset.info = custom
+            ? 'Up to 32 letters, digits and _, starting with a letter. The same name in G-code (RESPOND PREFIX=notify_custom MSG="pushraker.<name>") and in templates (pushraker.<name>.fired, .count…).'
+            : `Its name in templates: pushraker.${meta ? meta.row : editing.key}.enabled, .fired, .count… Not editable.`;
+        if (!custom) el('pr-cname').value = meta ? meta.row : editing.key;
         if (custom) {
             el('pr-cname').value = editing.name;
             el('pr-when').value = editing.when;
             if (whenView) field('when').set(editing.when);
+            el('pr-check').value = editing.evaluate || 'poll';
+            showEvaluate();
             el('pr-repeat').value = editing.repeat;
             el('pr-rmin').value = editing.repeat_minutes;
             el('pr-now').innerHTML = '';
@@ -1572,7 +1767,7 @@
         await mountEditor();
         fillEditor();
         activeField = isCustom(key) && !editing.when ? 'when' : 'contents';
-        await renderPicker(await loadCatalogue(isCustom(key) ? 'custom' : key));
+        await renderPicker(await loadCatalogue(catKey(key)));
         // From the top (a new one: on its name)
         el('pr-data').querySelector('.pr-modal-box').scrollTop = 0;
         if (isCustom(key) && !editing.name) el('pr-cname').focus({ preventScroll: true });
@@ -1660,6 +1855,11 @@
     };
     el('pr-cname').oninput = el('pr-when').oninput = editorChanged;
     el('pr-repeat').onchange = el('pr-rmin').oninput = editorChanged;
+    el('pr-check').onchange = async () => {
+        showEvaluate();
+        editorChanged();
+        if (editing) await renderPicker(await loadCatalogue(catKey(editing.key)));
+    };
     el('pr-when').onfocus = () => { activeField = 'when'; updateJinjaPane(); };
     ['pr-cname'].forEach(id => { el(id).onfocus = () => { el('pr-blocks').style.display = ''; }; });
 
@@ -1730,7 +1930,7 @@
     function completionNames() {
         const out = new Set(['printer', 'job', 'extruders', 'event', 'machine', 'loop.index', 'loop.first', 'loop.last']);
         const walk = n => { if (n.expr) out.add(n.expr.replace(/#/g, '1')); (n.children || []).forEach(walk); };
-        const ck = editing ? (isCustom(editing.key) ? 'custom' : editing.key) : '';
+        const ck = editing ? catKey(editing.key) : '';
         (catalogues[ck] || []).forEach(c => (c.children || []).forEach(walk));
         const loop = editing ? loopAt(field('contents').get(), field('contents').sel()[0]) : null;
         if (loop) loopFields(loop.list).forEach(k => out.add(loop.name + '.' + k));
@@ -2011,13 +2211,58 @@
     // and the IPv4 address of each network interface Moonraker reports
     // (/machine/system_info), by interface name; nothing is detected by
     // name. Then Clear.
+    // A page served by Moonraker itself (no web server in front: the
+    // Creality Hi) has Moonraker's API port in its address, wrong for the
+    // Web UI button: the printer's own web pages are offered instead
+    // (meta.web_pages, found by the server: "Fluidd (port 4408)"), or the
+    // address without a port when none was found.
+    // A printer profile that declares its web page (meta.web_page, a URL
+    // with {host}: the Creality Hi's Fluidd on 4408) comes first, with
+    // this browser's host, and is the field's placeholder; the web pages
+    // found on the machine only when the profile declares none.
     let fillChoices = null;
+    let webPages = [];
+    let profilePage = null;
+    const viaMoonraker = () => location.pathname.startsWith('/server/pushraker');
+    const hostname = () => location.hostname.includes(':') ? '[' + location.hostname + ']' : location.hostname;
+    function pageHost(port) {
+        return hostname() + (port && port !== 80 ? ':' + port : '');
+    }
+    function profileUrl(host) {
+        return profilePage ? profilePage.url.split('{host}').join(host) : '';
+    }
+    const shown = url => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    // The address the Web UI button should open, from this browser
+    function ownAddress() {
+        if (!/^https?:$/.test(location.protocol) || !location.hostname) return '';
+        if (profilePage) return profileUrl(hostname());
+        if (!viaMoonraker()) return location.protocol + '//' + location.host;
+        return 'http://' + pageHost(webPages.length ? webPages[0].port : 0);
+    }
     async function fillOptions() {
         if (fillChoices) return fillChoices;
         const out = [];
+        const port = !profilePage && viaMoonraker() && webPages.length ? webPages[0].port : 0;
         if (/^https?:$/.test(location.protocol) && location.hostname) {
-            out.push({ url: location.protocol + '//' + location.host, html:
-                `This browser's address: <code>${esc(location.host)}</code><small>Works wherever this address works for you</small>` });
+            if (profilePage) {
+                const url = profileUrl(hostname());
+                out.push({ url, html: `${esc(profilePage.name)}: <code>${esc(shown(url))}</code><small>This printer's web page</small>` });
+                const mine = location.protocol + '//' + location.host;
+                if (!viaMoonraker() && shown(mine) !== shown(url)) {
+                    out.push({ url: mine, html: `This browser's address: <code>${esc(location.host)}</code>` });
+                }
+            } else if (!viaMoonraker()) {
+                out.push({ url: location.protocol + '//' + location.host, html:
+                    `This browser's address: <code>${esc(location.host)}</code><small>Works wherever this address works for you</small>` });
+            } else if (webPages.length) {
+                for (const p of webPages) {
+                    out.push({ url: 'http://' + pageHost(p.port), html:
+                        `${esc(p.name)} (port ${p.port}): <code>${esc(pageHost(p.port))}</code>` });
+                }
+            } else {
+                out.push({ url: 'http://' + location.hostname, html:
+                    `This browser's address: <code>${esc(location.hostname)}</code>` });
+            }
         }
         try {
             const info = await api('/machine/system_info');
@@ -2026,12 +2271,20 @@
                 if (name === 'lo') continue;
                 for (const a of iface.ip_addresses || []) {
                     if (a.family !== 'ipv4' || a.is_link_local || !a.address || a.address.startsWith('127.')) continue;
-                    out.push({ url: 'http://' + a.address, html: `${esc(name)}: <code>${esc(a.address)}</code>` });
+                    if (profilePage) {
+                        const url = profileUrl(a.address);
+                        out.push({ url, html: `${esc(name)}: <code>${esc(shown(url))}</code>` });
+                        continue;
+                    }
+                    const at = a.address + (port && port !== 80 ? ':' + port : '');
+                    out.push({ url: 'http://' + at, html: `${esc(name)}: <code>${esc(at)}</code>` });
                 }
             }
         } catch (e) { /* the browser's address is still offered */ }
-        fillChoices = out;
-        return out;
+        // An interface with the browser's own address: listed once
+        const seen = new Set();
+        fillChoices = out.filter(c => !seen.has(shown(c.url)) && seen.add(shown(c.url)));
+        return fillChoices;
     }
     function closeFill() {
         el('nt-fill-menu').classList.remove('open');
@@ -2178,8 +2431,14 @@
     }
 
     // ---- load / collect ----------------------------------------------------
+    // What's saved (Discard changes goes back to it; a restore or reset
+    // puts something else on the page), and the stored secrets a reset
+    // drops on saving
+    let savedState = null, forget = [];
     function render(data) {
         state = data;
+        savedState = data;
+        forget = [];
         el('pr-version').textContent = data.meta.version ? `pushraker ${data.meta.version}` : ''; fetch('/server/pushraker_addons/info').then(r => r.ok ? r.json() : null).then(j => { const a = j && j.result; const o = el('pr-addons'); if (o) o.remove(); if (!a || !a.version) return; const s = document.createElement('span'); s.id = 'pr-addons'; const l = document.createElement('a'); l.href = a.url; l.target = '_blank'; l.style.margin = '0'; l.textContent = "DIEHARDave's plugins"; s.append(' - with ', l, ' ' + a.version); el('pr-version').after(s); }).catch(() => {});
         el('nt-enabled').checked = data.enabled;
         el('nt-push-enabled').checked = data.push_enabled !== false;
@@ -2224,7 +2483,7 @@
             // Outlined once the rows are drawn
             setTimeout(() => {
                 liveCheckAll();
-                const FIELD_INPUT = { driver_temp: 'nt-driver-hot', report_interval: 'nt-report-interval', layers_complete: 'nt-layers', email_port: 'nt-email-port', filament_low_percent: 'nt-fl-percent' };
+                const FIELD_INPUT = { driver_temp: 'nt-driver-hot', bed_cool_temp: 'nt-bed-cool', report_interval: 'nt-report-interval', layers_complete: 'nt-layers', email_port: 'nt-email-port', filament_low_percent: 'nt-fl-percent' };
                 const input = el(FIELD_INPUT[pb.field] || '');
                 if (input) {
                     input.classList.add('nt-bad');
@@ -2291,8 +2550,15 @@
         // First setup only: the address this page was opened with. Once
         // saved, an empty field means "no buttons" and is left alone.
         const firstSetup = !data.enabled && !data.server && !data.pushover_user && !data.has_secret;
-        if (firstSetup && !data.printer_url && /^https?:$/.test(location.protocol) && location.hostname) {
-            el('nt-printer-url').value = location.protocol + '//' + location.hostname;
+        webPages = (data.meta && data.meta.web_pages) || [];
+        profilePage = (data.meta && data.meta.web_page) || null;
+        fillChoices = null;
+        el('nt-printer-url').placeholder = profilePage && location.hostname ? profileUrl(hostname()) : 'http://u1.home';
+        // First setup, or a backup from another printer model restored
+        // with no Printer URL here: this printer's own web page
+        const otherModel = data.meta && data.meta.other_model;
+        if ((firstSetup || otherModel) && !data.printer_url && ownAddress()) {
+            el('nt-printer-url').value = ownAddress();
         }
         updatePrinterUrl();
         el('nt-server').oninput = updatePublicWarning;
@@ -2436,17 +2702,23 @@
             name: el('nt-name').value.trim() || state.meta.default_name || 'Printer',
             camera: el('nt-camera').value,
             printer_url: el('nt-printer-url').value.trim(),
-            layers_complete: parseInt(el('nt-layers').value, 10) || 2,
-            first_layer_objects: el('nt-layer-objects').value,
+            // A row this printer doesn't show has no inputs: its settings
+            // stay as they are (e.g. filament change on a printer without
+            // the U1's feeders)
+            layers_complete: el('nt-layers') ? parseInt(el('nt-layers').value, 10) || 2 : state.layers_complete,
+            first_layer_objects: el('nt-layer-objects') ? el('nt-layer-objects').value : state.first_layer_objects,
             filament_change_events: el('nt-fc-loaded') ? ['loaded', 'unloaded'].filter(e => el('nt-fc-' + e).checked).join(',') : [].concat(state.filament_change_events || []).join(','),
-            driver_temp: parseInt(el('nt-driver-hot').value, 10) || 105,
-            report_interval: parseInt(el('nt-report-interval').value, 10) || 30,
-            complete_objects: el('nt-complete-objects').value,
+            driver_temp: el('nt-driver-hot') ? parseInt(el('nt-driver-hot').value, 10) || 105 : state.driver_temp,
+            bed_cool_temp: el('nt-bed-cool') ? parseInt(el('nt-bed-cool').value, 10) || 40 : state.bed_cool_temp,
+            report_interval: el('nt-report-interval') ? parseInt(el('nt-report-interval').value, 10) || 30 : state.report_interval,
+            complete_objects: el('nt-complete-objects') ? el('nt-complete-objects').value : state.complete_objects,
             filament_low_percent: parseInt(el('nt-fl-percent').value, 10) || 0,
             filament_low_grams: parseInt(el('nt-fl-grams').value, 10) || 0,
             filament_unknown: el('nt-fl-unknown').checked,
             time_left: timeMethod(),
-            progress_marks: (state.meta.progress_marks || [25, 50, 75]).filter(m => el('nt-pm-' + m) && el('nt-pm-' + m).checked).join(','),
+            progress_marks: (state.meta.progress_marks || [25, 50, 75]).some(m => el('nt-pm-' + m))
+                ? (state.meta.progress_marks || [25, 50, 75]).filter(m => el('nt-pm-' + m) && el('nt-pm-' + m).checked).join(',')
+                : progressMarks().join(','),
             email_enabled: emailEnabled,
             email_host: el('nt-email-host').value.trim(),
             email_port: parseInt(el('nt-email-port').value, 10) || 0,
@@ -2464,6 +2736,7 @@
         if (secret) payload.secret = secret;
         if (emailPassword) payload.email_password = emailPassword;
         if (webhookUrl) payload.webhook_url = webhookUrl;
+        if (forget.length) payload.forget = forget.slice();
         return payload;
     }
 
@@ -2560,12 +2833,12 @@
         }
         try { payload = collect(true); } catch (e) { showError(e.message); return; }
         busy(true, 'Saving…');
-        runStart('Save & Apply', 'Saving and applying settings…');
+        runStart('Save & Apply', 'Saving...');
         try {
             const data = await api('/server/pushraker/config', 'POST', payload);
             const notes = (data.notes || []).slice();
             render(data);
-            showConsole(['Settings saved and applied. Nothing restarts: they are in effect now, during a print job too.'].concat(notes));
+            showConsole(['Settings saved and applied.'].concat(notes));
             el('pr-status').textContent = 'Saved and applied';
             runEnd('Done', true);
         } catch (e) {
@@ -2622,6 +2895,419 @@
 
     el('pr-save').onclick = save;
     el('pr-test').onclick = test;
+
+    // Backup: the saved settings in a file (no tokens, passwords or webhook
+    // URL), downloaded or sent; Restore: a backup's settings onto this page
+    // (the secrets stay as they are), saved with Save & Apply
+    const bkMenu = el('bk-menu');
+    let bkHow = '', bkIn = null;
+    const bkSay = t => { el('bk-status').textContent = t; };
+    const bkContents = st => {
+        const custom = (st.custom || []).map(c => c.name);
+        return '<li>Servers, topics, email and webhook settings</li>' +
+            '<li>Every notification: on/off, push and email, priority, templates</li>' +
+            `<li>${custom.length ? `${custom.length} custom notification${custom.length > 1 ? 's' : ''}: ${esc(custom.join(', '))}` : 'No custom notifications'}</li>`;
+    };
+    function bkShowMenu() {
+        const t = (state && state.meta.backup) || {};
+        const push = el('bk-push'), mail = el('bk-email');
+        push.textContent = 'Send by push' + (t.push_label ? ': ' + t.push_label : '');
+        push.classList.toggle('bk-off', !!t.push);
+        push.title = t.push || '';
+        mail.classList.toggle('bk-off', !!t.email);
+        mail.title = t.email || '';
+    }
+    el('bk-send').onclick = e => {
+        e.stopPropagation();
+        if (!state) return;
+        bkShowMenu();
+        el('bk-send').setAttribute('aria-expanded', String(bkMenu.classList.toggle('open')));
+    };
+    document.addEventListener('click', () => { bkMenu.classList.remove('open'); el('bk-send').setAttribute('aria-expanded', 'false'); });
+    bkMenu.onclick = e => {
+        const b = e.target.closest('[data-bk]');
+        if (!b) return;
+        if (b.classList.contains('bk-off')) { e.stopPropagation(); bkSay('⚠️ ' + b.title); return; }
+        bkHow = b.dataset.bk;
+        const t = state.meta.backup || {};
+        el('bk-out-title').textContent = bkHow === 'download' ? 'Download a backup' :
+            bkHow === 'push' ? `Send a backup by push (${t.push_label})` : 'Send a backup by email';
+        el('bk-out-list').innerHTML = bkContents(state);
+        bkFile();
+        el('bk-go').textContent = bkHow === 'download' ? 'Download' : 'Send';
+        el('bk-go').disabled = false;
+        el('bk-to-wrap').style.display = bkHow === 'email' ? '' : 'none';
+        el('bk-to').value = t.email_to || '';
+        el('bk-err').style.display = 'none';
+        el('bk-out').classList.add('open');
+        if (bkHow === 'email') el('bk-to').focus();
+    };
+    function bkFile() {
+        const day = new Date().toISOString().slice(0, 10);
+        el('bk-out-file').textContent = `📄 pushraker-backup-${(state.name || 'Printer').replace(/[^A-Za-z0-9._-]+/g, '-')}-${day}.json`;
+        el('bk-out-never').textContent = 'Not included: tokens, passwords and the webhook URL.';
+    }
+    el('bk-cancel').onclick = () => el('bk-out').classList.remove('open');
+    el('bk-go').onclick = async () => {
+        if (el('bk-go').disabled) return;
+        const go = el('bk-go'), label = go.textContent;
+        el('bk-err').style.display = 'none';
+        go.disabled = true;
+        go.textContent = bkHow === 'download' ? 'Downloading…' : 'Sending…';
+        try {
+            const data = await api('/server/pushraker/backup', 'POST',
+                bkHow === 'email' ? { how: 'email', to: el('bk-to').value.trim() }
+                    : { how: bkHow });
+            if (bkHow === 'download') {
+                const url = URL.createObjectURL(new Blob([JSON.stringify(data.backup, null, 2)], { type: 'application/json' }));
+                const a = document.createElement('a');
+                a.href = url; a.download = data.name;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+                bkSay('✓ Downloaded ' + data.name);
+            } else {
+                bkSay('✓ Sent ' + data.name + ' to ' + data.sent);
+            }
+            el('bk-out').classList.remove('open');
+        } catch (e) {
+            el('bk-err').textContent = '⚠️ ' + e.message;
+            el('bk-err').style.display = '';
+        } finally {
+            go.disabled = false;
+            go.textContent = label;
+        }
+    };
+    // Reset…, by section (All settings ticks the rest): the chosen ones as
+    // a new install has them, on this page; Save & Apply saves it and
+    // drops their tokens and passwords
+    const rsBoxes = () => [...document.querySelectorAll('#rs-modal [data-rs]')].filter(b => !b.disabled);
+    const RS_WHAT = { push: 'push service settings', email: 'email settings', webhook: 'webhook',
+        stock: 'stock notifications', custom: 'custom notifications' };
+    // Reset works 5 seconds after the dialog opens, with something ticked
+    let rsLeft = 0, rsTimer = null;
+    function rsTick() {
+        rsShow();
+        if (rsLeft > 0) rsTimer = setTimeout(() => { rsLeft--; rsTick(); }, 1000);
+    }
+    function rsShow() {
+        const on = rsBoxes().filter(b => b.checked).map(b => b.dataset.rs), all = el('rs-all').checked;
+        el('rs-yes').disabled = rsLeft > 0 || (!on.length && !all);
+        el('rs-yes').textContent = rsLeft > 0 ? `Reset (${rsLeft})` : 'Reset';
+        el('rs-red').style.display = on.length || all ? '' : 'none';
+        el('rs-red').textContent = all ? '⚠️ All settings will be reset.'
+            : '⚠️ Will be reset: ' + on.map(k => RS_WHAT[k]).join(', ') + '.';
+    }
+    el('rs-open').onclick = () => {
+        if (!state) return;
+        const none = !customs.length, box = document.querySelector('#rs-modal [data-rs="custom"]');
+        box.disabled = none;
+        el('rs-custom-wrap').classList.toggle('rs-off', none);
+        el('rs-custom-sub').textContent = none ? 'None' : 'All of them are deleted';
+        document.querySelectorAll('#rs-modal input[type=checkbox]').forEach(b => { b.checked = false; });
+        clearTimeout(rsTimer);
+        rsLeft = 5;
+        rsTick();
+        el('rs-modal').classList.add('open');
+    };
+    el('rs-all').onchange = () => { rsBoxes().forEach(b => { b.checked = el('rs-all').checked; }); rsShow(); };
+    document.querySelector('#rs-modal .rs-list').addEventListener('change', e => {
+        if (e.target.dataset.rs) { el('rs-all').checked = false; rsShow(); }
+    });
+    el('rs-no').onclick = () => { clearTimeout(rsTimer); el('rs-modal').classList.remove('open'); };
+    el('rs-yes').onclick = async () => {
+        if (el('rs-yes').disabled) return;
+        const sections = el('rs-all').checked ? ['all'] : rsBoxes().filter(b => b.checked).map(b => b.dataset.rs);
+        el('rs-modal').classList.remove('open');
+        const keep = saved, was = savedState;
+        try {
+            const res = await api('/server/pushraker/backup', 'POST', { how: 'reset', sections });
+            // Only those sections: what else was changed on this page and
+            // not saved stays (a token typed in, too)
+            const page = collect(false), gone = [...new Set(forget.concat(res.forget || []))];
+            const typed = { secret: page.secret, email_password: page.email_password, webhook_url: page.webhook_url };
+            const merged = Object.assign({}, state, page);
+            (res.keys || []).forEach(k => { merged[k] = res.view[k]; });
+            ['secret', 'email_password', 'webhook_url'].forEach(k => {
+                delete merged[k];
+                if (gone.includes(k)) merged['has_' + k] = false;
+            });
+            merged.meta = state.meta;
+            render(merged);
+            forget = gone;
+            const box = { ntfy: 'nt-secret', pushover: 'nt-po-token', gotify: 'nt-gt-token', telegram: 'nt-tg-token',
+                discord: 'nt-dc-hook', discord_dm: 'nt-dc-token' }[merged.provider];
+            if (typed.secret && box && !(res.forget || []).includes('secret')) el(box).value = typed.secret;
+            if (typed.email_password && !(res.forget || []).includes('email_password')) el('nt-email-password').value = typed.email_password;
+            if (typed.webhook_url && !(res.forget || []).includes('webhook_url')) el('nt-wh-url').value = typed.webhook_url;
+        } catch (e) {
+            bkSay('⚠️ ' + e.message);
+            return;
+        }
+        saved = keep; savedState = was;
+        markDirty();
+        bkSay('✓ Reset on this page: check it, then Save & Apply');
+    };
+    el('bk-restore').onclick = () => { if (state) { el('bk-file').value = ''; el('bk-file').click(); } };
+    el('bk-file').onchange = async () => {
+        const f = el('bk-file').files[0];
+        if (!f) return;
+        let data;
+        try {
+            if (f.size > 2000000) throw new Error('too big for a backup');
+            data = JSON.parse(await f.text());
+            if (!data || typeof data !== 'object' || !('pushraker_backup' in data)) throw new Error('not a pushraker backup');
+            if (!data.settings || typeof data.settings !== 'object' || Array.isArray(data.settings)) throw new Error('the backup has no settings');
+            if (Number(data.pushraker_backup) > 1) throw new Error('the backup is from a newer pushraker; update this one first');
+        } catch (e) {
+            bkSay('⚠️ Can\'t restore ' + f.name + ': ' + e.message);
+            return;
+        }
+        bkIn = data;
+        let when = '';
+        try { when = new Date(data.created).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { when = ''; }
+        el('bk-in-file').textContent = '📄 ' + f.name;
+        el('bk-in-list').innerHTML = `<li>From <b>${esc(data.printer || '?')}</b>${when ? ', ' + esc(when) : ''}${data.version ? ', pushraker ' + esc(data.version) : ''}</li>` + bkContents(data.settings);
+        el('bk-in-red').textContent = '⚠️ All settings will be replaced by the backup (excluding tokens, passwords, webhook URLs).';
+        el('bk-in-note').textContent = 'Tokens, passwords and webhook URLs stay as they are. Nothing is saved until you click Save & Apply.';
+        // What doesn't fit this printer or this pushraker (pushraker's
+        // wording, settings.RESTORE_NOTES): only the lines that apply
+        el('bk-in-fit').innerHTML = '';
+        el('bk-modal').classList.add('open');
+        try {
+            const r = await api('/server/pushraker/backup', 'POST', { how: 'inspect', backup: data });
+            if (bkIn === data) el('bk-in-fit').innerHTML = (r.notes || []).map(n => `<li>${esc(n)}</li>`).join('');
+        } catch (e) { /* an older component: nothing to add */ }
+    };
+    el('bk-no').onclick = () => { el('bk-modal').classList.remove('open'); bkIn = null; };
+    el('bk-yes').onclick = async () => {
+        el('bk-modal').classList.remove('open');
+        if (!bkIn) return;
+        const data = bkIn, keep = saved, was = savedState;
+        bkIn = null;
+        try {
+            // Checked by pushraker like a save: nothing from a file gets
+            // onto the page as it came; the secrets stay the ones here
+            const res = await api('/server/pushraker/backup', 'POST', { how: 'restore', backup: data });
+            render(res.view);
+        } catch (e) {
+            bkSay('⚠️ ' + (/^Can't restore/.test(e.message) ? e.message : 'Can\'t restore this backup: ' + e.message));
+            return;
+        }
+        saved = keep; savedState = was;
+        markDirty();
+        bkSay('✓ Restored on this page: check it, then Save & Apply');
+    };
+    // ---- one notification in a file: Export (from its editor) and Import
+    // The file: {pushraker_notification, from, kind, id | name,
+    // notification}; checked by pushraker both ways, like a save
+    const nxMenu = el('nx-menu');
+    let nxHow = '', nxIn = null, nxPatch = null;
+    // The notification as it is in the editor now, as a file's contents
+    function nxNow() {
+        editorChanged();
+        const key = editing.key;
+        if (isCustom(key)) {
+            const c = pickCustom(editing), n = {};
+            Object.keys(c).forEach(k => { if (k !== 'name' && k !== 'topic') n[k] = c[k]; });
+            return { pushraker_notification: 1, kind: 'custom', name: editing.name, notification: n };
+        }
+        const t = {};
+        TPL_FIELDS.forEach(f => { t[f] = editing[f]; });
+        const n = diffFromDefault(key, t);
+        delete n.topic;
+        const box = q => document.querySelector(q);
+        const row = state.rows[key] || {};
+        n.enabled = box(`[data-enabled="${key}"]`) ? box(`[data-enabled="${key}"]`).checked : !!row.enabled;
+        n.email = box(`[data-email="${key}"]`) ? box(`[data-email="${key}"]`).checked : !!row.email;
+        n.priority = editing.priority || row.priority || 'default';
+        const page = collect(false);
+        ((state.meta.row_options || {})[key] || []).forEach(o => { n[o] = page[o]; });
+        return { pushraker_notification: 1, kind: 'stock', id: key, notification: n };
+    }
+    // Whether the editor's notification differs from what is saved
+    function nxUnsaved(f) {
+        const canon = o => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
+        const was = JSON.parse(saved || '{}');
+        if (f.kind === 'custom') {
+            const c = customById(Number(editing.key.slice(7)));
+            const old = c && c._saved ? (was.custom || []).find(x => x.name === c._saved) : null;
+            if (!old || old.name !== f.name) return true;
+            const n = Object.assign({}, old);
+            delete n.name; delete n.topic;
+            return canon(n) !== canon(f.notification);
+        }
+        const key = f.id, row = (was.rows || {})[key] || state.rows[key] || {};
+        const t = (was.templates || {})[key];
+        const n = t ? diffFromDefault(key, t) : {};
+        delete n.topic;
+        n.enabled = !!row.enabled; n.email = !!row.email; n.priority = row.priority || 'default';
+        ((state.meta.row_options || {})[key] || []).forEach(o => { n[o] = was[o]; });
+        return canon(n) !== canon(f.notification);
+    }
+    const nxFileName = f => 'pushraker-' + String(f.kind === 'custom' ? f.name : f.id).replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 60) + '.json';
+    el('nx-send').onclick = e => {
+        e.stopPropagation();
+        if (!editing) return;
+        const t = (state && state.meta.backup) || {};
+        const push = el('nx-push'), mail = el('nx-email');
+        push.textContent = 'Send by push' + (t.push_label ? ': ' + t.push_label : '');
+        push.classList.toggle('bk-off', !!t.push);
+        push.title = t.push || '';
+        mail.classList.toggle('bk-off', !!t.email);
+        mail.title = t.email || '';
+        el('nx-send').setAttribute('aria-expanded', String(nxMenu.classList.toggle('open')));
+    };
+    document.addEventListener('click', () => { nxMenu.classList.remove('open'); el('nx-send').setAttribute('aria-expanded', 'false'); });
+    nxMenu.onclick = e => {
+        const b = e.target.closest('[data-nx]');
+        if (!b) return;
+        if (b.classList.contains('bk-off')) { e.stopPropagation(); return; }
+        nxHow = b.dataset.nx;
+        const t = state.meta.backup || {}, f = nxNow();
+        el('nx-out-title').textContent = nxHow === 'download' ? 'Download this notification' :
+            nxHow === 'push' ? `Send this notification by push (${t.push_label})` : 'Send this notification by email';
+        el('nx-out-file').textContent = '📄 ' + nxFileName(f);
+        el('nx-out-what').textContent = NX_TEXT.what;
+        const changed = nxUnsaved(f);
+        el('nx-out-red').textContent = changed ? NX_TEXT.unsaved : '';
+        el('nx-out-red').style.display = changed ? '' : 'none';
+        el('nx-go').textContent = nxHow === 'download' ? 'Download' : 'Send';
+        el('nx-go').disabled = false;
+        el('nx-to-wrap').style.display = nxHow === 'email' ? '' : 'none';
+        el('nx-to').value = t.email_to || '';
+        el('nx-err').style.display = 'none';
+        el('nx-out').classList.add('open');
+        if (nxHow === 'email') el('nx-to').focus();
+    };
+    el('nx-cancel').onclick = () => el('nx-out').classList.remove('open');
+    el('nx-go').onclick = async () => {
+        if (el('nx-go').disabled || !editing) return;
+        const go = el('nx-go'), label = go.textContent;
+        el('nx-err').style.display = 'none';
+        go.disabled = true;
+        go.textContent = nxHow === 'download' ? 'Downloading…' : 'Sending…';
+        try {
+            const data = await api('/server/pushraker/backup', 'POST', { how: 'notification', via: nxHow, notification: nxNow(), to: el('nx-to').value.trim() });
+            if (nxHow === 'download') {
+                const url = URL.createObjectURL(new Blob([JSON.stringify(data.file, null, 2)], { type: 'application/json' }));
+                const a = document.createElement('a');
+                a.href = url; a.download = data.name;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+            }
+            el('nx-out').classList.remove('open');
+        } catch (e) {
+            el('nx-err').textContent = '⚠️ ' + e.message;
+            el('nx-err').style.display = '';
+        } finally {
+            go.disabled = false;
+            go.textContent = label;
+        }
+    };
+    // Import…: pick a file, pushraker says what it is and what doesn't fit
+    // here (settings.IMPORT_NOTES), then it lands on this page like an
+    // edit; replacing one: Import works 5 seconds after the dialog opens
+    const NX_TEXT = {
+        what: 'Not included: addresses, tokens, server settings, its topic.',
+        unsaved: '⚠️ Includes unsaved changes.',
+        stock: 'Stock notification: ',
+        custom: 'Custom notification: ',
+        replaces: n => `Replaces "${n}".`,
+        full: n => `Up to ${n} custom notifications: delete one first.`,
+    };
+    function nxImport() {
+        if (!state) return;
+        el('nx-file').value = '';
+        el('nx-file').click();
+    }
+    let nxLeft = 0, nxTimer = null;
+    function nxTick() {
+        el('nx-yes').disabled = nxLeft > 0;
+        el('nx-yes').textContent = nxLeft > 0 ? `Import (${nxLeft})` : 'Import';
+        if (nxLeft > 0) nxTimer = setTimeout(() => { nxLeft--; nxTick(); }, 1000);
+    }
+    el('nx-file').onchange = async () => {
+        const f = el('nx-file').files[0];
+        if (!f) return;
+        let data;
+        try {
+            if (f.size > 200000) throw new Error('too big for a notification file');
+            data = JSON.parse(await f.text());
+            if (!data || typeof data !== 'object' || !('pushraker_notification' in data)) throw new Error('not a pushraker notification file');
+        } catch (e) {
+            bkSay('⚠️ Can\'t import ' + f.name + ': ' + e.message);
+            return;
+        }
+        let r;
+        try {
+            r = await api('/server/pushraker/backup', 'POST', { how: 'notification_inspect', file: data });
+        } catch (e) {
+            bkSay('⚠️ Can\'t import ' + f.name + ': ' + e.message);
+            return;
+        }
+        nxIn = data;
+        const custom = r.kind === 'custom';
+        const same = custom ? customs.find(c => c.name.toLowerCase() === String(r.id).toLowerCase()) : null;
+        if (custom && !same && customs.length >= (state.meta.custom_max || 20)) {
+            bkSay('⚠️ ' + NX_TEXT.full(state.meta.custom_max || 20));
+            nxIn = null;
+            return;
+        }
+        el('nx-in-file').textContent = '📄 ' + f.name;
+        el('nx-in-list').innerHTML = `<li>${esc(custom ? NX_TEXT.custom : NX_TEXT.stock)}<b>${esc(r.label)}</b></li>`;
+        el('nx-in-fit').innerHTML = (r.notes || []).map(n => `<li>${esc(n)}</li>`).join('');
+        const replaces = custom ? (same ? same.name : '') : r.label;
+        el('nx-in-red').textContent = replaces ? '⚠️ ' + NX_TEXT.replaces(replaces) : '';
+        el('nx-in-red').style.display = replaces ? '' : 'none';
+        clearTimeout(nxTimer);
+        nxLeft = replaces ? 5 : 0;
+        nxTick();
+        el('nx-modal').classList.add('open');
+    };
+    el('nx-no').onclick = () => { clearTimeout(nxTimer); el('nx-modal').classList.remove('open'); nxIn = null; };
+    el('nx-yes').onclick = async () => {
+        if (el('nx-yes').disabled || !nxIn) return;
+        el('nx-modal').classList.remove('open');
+        const data = nxIn, keep = saved, was = savedState;
+        nxIn = null;
+        let p;
+        try {
+            p = await api('/server/pushraker/backup', 'POST', { how: 'notification_import', file: data });
+        } catch (e) {
+            bkSay('⚠️ Can\'t import this notification: ' + e.message);
+            return;
+        }
+        if (p.kind === 'custom') {
+            const same = customs.find(c => c.name.toLowerCase() === p.custom.name.toLowerCase());
+            if (same) Object.assign(same, p.custom);
+            else customs.push(Object.assign({ _id: ++customSeq, _saved: null }, p.custom));
+            renderCustomRows();
+        } else {
+            // Everything else on this page stays as it is, unsaved changes
+            // too: the page as it stands, with this notification replaced
+            const page = collect(false), kept = customs;
+            const typed = { secret: page.secret, email_password: page.email_password, webhook_url: page.webhook_url };
+            const merged = Object.assign({}, state, page);
+            merged.rows = Object.assign(JSON.parse(JSON.stringify(state.rows)), page.rows);
+            merged.rows[p.id] = p.row;
+            merged.templates = JSON.parse(JSON.stringify(tplEdits));
+            if (p.template) merged.templates[p.id] = p.template; else delete merged.templates[p.id];
+            Object.assign(merged, p.options || {});
+            ['secret', 'email_password', 'webhook_url'].forEach(k => { delete merged[k]; });
+            merged.meta = state.meta;
+            render(merged);
+            customs = kept;
+            renderCustomRows();
+            const box = { ntfy: 'nt-secret', pushover: 'nt-po-token', gotify: 'nt-gt-token', telegram: 'nt-tg-token',
+                discord: 'nt-dc-hook', discord_dm: 'nt-dc-token' }[merged.provider];
+            if (typed.secret && box) el(box).value = typed.secret;
+            if (typed.email_password) el('nt-email-password').value = typed.email_password;
+            if (typed.webhook_url) el('nt-wh-url').value = typed.webhook_url;
+        }
+        saved = keep; savedState = was;
+        markDirty();
+        bkSay('✓ Imported on this page: check it, then Save & Apply');
+    };
     // Discard changes: back to the last saved settings, on this page.
     // Only with unsaved changes (the button is greyed out otherwise)
     let closing = false;
@@ -2660,7 +3346,7 @@
     }
     el('pr-close').onclick = async () => {
         if (!dirty() || !(await confirmDiscard())) return;
-        render(state);
+        render(savedState || state);
         el('pr-close').disabled = true;
         el('pr-status').textContent = 'Changes discarded';
     };
